@@ -1,0 +1,82 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-Iinc",
+      "-c",
+      "-o",
+      "build/main.o",
+      "example/main.c"
+    ],
+    "directory": "/Users/jamiebrown/code/jamlang",
+    "file": "/Users/jamiebrown/code/jamlang/example/main.c",
+    "output": "/Users/jamiebrown/code/jamlang/build/main.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-Iinc",
+      "-c",
+      "-o",
+      "build/core_engine.o",
+      "src/core_engine.c"
+    ],
+    "directory": "/Users/jamiebrown/code/jamlang",
+    "file": "/Users/jamiebrown/code/jamlang/src/core_engine.c",
+    "output": "/Users/jamiebrown/code/jamlang/build/core_engine.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-Iinc",
+      "-c",
+      "-o",
+      "build/jamlang.o",
+      "src/jamlang.c"
+    ],
+    "directory": "/Users/jamiebrown/code/jamlang",
+    "file": "/Users/jamiebrown/code/jamlang/src/jamlang.c",
+    "output": "/Users/jamiebrown/code/jamlang/build/jamlang.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-Iinc",
+      "-c",
+      "-o",
+      "build/logger.o",
+      "src/logger.c"
+    ],
+    "directory": "/Users/jamiebrown/code/jamlang",
+    "file": "/Users/jamiebrown/code/jamlang/src/logger.c",
+    "output": "/Users/jamiebrown/code/jamlang/build/logger.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-Wall",
+      "-Wextra",
+      "-g",
+      "-Iinc",
+      "-c",
+      "-o",
+      "build/oscillators.o",
+      "src/oscillators.c"
+    ],
+    "directory": "/Users/jamiebrown/code/jamlang",
+    "file": "/Users/jamiebrown/code/jamlang/src/oscillators.c",
+    "output": "/Users/jamiebrown/code/jamlang/build/oscillators.o"
+  }
+]
