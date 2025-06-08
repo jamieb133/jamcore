@@ -3,13 +3,15 @@
 #include <CoreAudioTypes/CoreAudioBaseTypes.h>
 #include <MacTypes.h>
 #include <assert.h>
+#include <pthread.h>
 #include <signal.h>
 
 #include <allocator.h>
 #include <core_engine.h>
 #include <logger.h>
+#include <stdint.h>
 
-static bool panicked_ = false;
+static _Atomic(bool) stopped_ = false;
 static CoreEngineContext* currentInstance_ = NULL;
 
 static void HandleSigInt(int sig)
@@ -19,36 +21,28 @@ static void HandleSigInt(int sig)
     CoreEngine_Panic();
 }
 
-static void RouteAudio(CoreEngineContext* context, 
-                        const AudioTimeStamp* timestamp, 
-                        UInt32 numFrames, 
-                        float* masterBuffer)
+static UInt16 GetScratchBuffers(JamAudioChannel* allChannels, UInt16 channelMask, float** buffers)
 {
-    Assert(context->masterVolumeScale <= 1.0f, "Master volume scale is too large (%f)", context->masterVolumeScale);
+    Assert(buffers, "Buffers is null");
 
-    for (JamAudioChannelId i = 0; i < context->numChannels; i++) {
-        JamAudioChannel* channel = &context->channels[i];
-        struct JamAudioProcessor* node = channel->processors.head;
+    UInt16 numFound = 0;
+    UInt16 numChannels = __builtin_popcount(channelMask);
 
-        while (node) {
-            node->buffer = channel->scratchBuffer;
-            node->numFrames = numFrames;
-            node->sampleRate = context->streamFormat.mSampleRate;
-            node->Process(node);
-            node = node->next;
+    for (UInt16 i = 0; i < MAX_CHANNELS; i++) {
+        if (numFound == numChannels) {
+            return numFound;
         }
 
-        // Sum into the output buffer
-        for (size_t frameIndex = 0; frameIndex < numFrames; frameIndex++) {
-            UInt16 sampleIndex = frameIndex * 2;
-
-            masterBuffer[sampleIndex] += channel->scratchBuffer[sampleIndex] * context->masterVolumeScale;
-            masterBuffer[sampleIndex + 1] += channel->scratchBuffer[sampleIndex + 1] * context->masterVolumeScale;
-
-            LogPeriodic(LOG_INFO, 500, "master buffer sample = %f", masterBuffer[sampleIndex]);
-            //LogInfoPeriodic("master buffer sample = %f", 500, masterBuffer[sampleIndex + 1]);
+        if (channelMask & (1 << i)) {
+            buffers[numFound] = allChannels[i].scratchBuffer;
+            numFound++;
         }
     }
+
+    Assert(false, "Failed to find all scratch buffers");
+
+    // Will not get here
+    return 0;
 }
 
 static OSStatus AudioRenderCallback(void* args,
@@ -63,28 +57,129 @@ static OSStatus AudioRenderCallback(void* args,
 
     CoreEngineContext* context = (CoreEngineContext*)args;
 
-    // Zero out buffers
+    // ========================================================================
+    // Bail out immediatelly after zeroing buffer if engine has stopped
+    // ========================================================================
+    
     for (UInt32 i = 0; i < ioData->mNumberBuffers; i++) {
         AudioBuffer* buffer = &ioData->mBuffers[i];
         memset(buffer->mData, 0, buffer->mDataByteSize);
     }
 
-    float* masterBuffer = (float*)ioData->mBuffers[0].mData;
+    Assert(numFrames <= BUFFER_SIZE, "Number of frames exceeds channel buffer capacity");
+
+    // Note: this must come after the buffers are zeroed out above to prevent horrible glitching!
+    if (context->flags & ENGINE_STOPPED) {
+        return noErr;
+    }
+
+    // ========================================================================
+    // If fading out then adjust the master volume accordingly
+    // ========================================================================
+
+    if (context->flags & ENGINE_STOP_REQUESTED) {
+        // TODO: actually fade out based on time
+        context->masterVolumeScale = 0.0;
+        
+        // Signal the main thread to continue
+        context->flags |= ENGINE_STOPPED;
+        Assert(pthread_cond_signal(&context->cond) == 0, "Failed to signal condition variable");
+
+        return noErr;
+    }
+
     Assert(ioData->mNumberBuffers == 1, "Error expected single interleaved audio stream");
-    RouteAudio(context, timestamp, numFrames, masterBuffer);
+
+    // ========================================================================
+    // Run all processors with their channel buffers
+    // ========================================================================
+
+    UInt16 numProcessors = __builtin_popcount(context->processorMask);
+
+    for (UInt16 i = 0; i < MAX_PROCESSORS; i++) { 
+        if (numProcessors == 0) {
+            break;
+        }
+
+        if (context->processorMask & (1 << i)) {
+            JamAudioProcessor* processor = &context->processors[i];
+            float* scratchBuffers[MAX_CHANNELS] = { NULL, };
+            UInt16 numChannels = GetScratchBuffers(context->channels, processor->channelMask, scratchBuffers);
+
+            LogInfoOnce("Num scratch buffers %d", numChannels);
+
+            // Only process audio if there are any channels
+            if (numChannels > 0) {
+                processor->Process(processor, numFrames, context->streamFormat.mSampleRate, scratchBuffers, numChannels);
+            }
+
+            numProcessors--;
+        }
+    }
+
+    Assert(numProcessors == 0, "Did not route all processors");
+
+    // ========================================================================
+    // Sum all channel audio into the master mix
+    // ========================================================================
+
+    f32* masterBuffer = (float*)ioData->mBuffers[0].mData;
+    u16 numChannels = __builtin_popcount(context->channelMask);
+
+    for (u16 i = 0; i < MAX_CHANNELS; i++) {
+        if (numChannels == 0) {
+            break;
+        }
+
+        if (context->channelMask & (1 << i)) {
+            JamAudioChannel* chan = &context->channels[i];
+            f32 chanVol = ((f32)chan->volume) / 255;
+
+            Assert(chanVol <= 1.0f, "Channel volume too large %f", chanVol);
+
+            f32 normalisedPan = (f32)chan->pan / (f32)UINT8_MAX;
+            f32 gainLeft = cosf(normalisedPan * (M_PI / 2.0f));
+            f32 gainRight = sinf(normalisedPan * (M_PI / 2.0f));
+
+            for (u16 frame = 0; frame < numFrames; frame++) {
+                f32 sampleLeft, sampleRight;
+                u16 sampleIndex = frame * 2;
+
+                sampleLeft = chan->scratchBuffer[sampleIndex];
+                sampleRight = chan->scratchBuffer[sampleIndex + 1];
+
+                sampleLeft *= chanVol;
+                sampleRight *= chanVol;
+                
+                sampleLeft *= gainLeft;
+                sampleRight *= gainRight;
+
+                masterBuffer[sampleIndex] += sampleLeft;
+                masterBuffer[sampleIndex + 1] += sampleRight;
+
+                LogPeriodic(LOG_INFO, 500, "master buffer samples = (%f, %f)", masterBuffer[sampleIndex], masterBuffer[sampleIndex + 1]);
+            }
+
+            numChannels--;
+        }
+    }
+
+    Assert(numChannels == 0, "Failed to sum all channels into master mix");
 
     return noErr;
 }
 
 void CoreEngine_Init(CoreEngineContext *context, float masterVolumeScale)
 {
-    for (UInt16 i = 0; i < MAX_CHANNELS; i++) {
-        ZeroMem(float, context->channels[i].scratchBuffer, MAX_CHANNELS);
-        context->channels[i].processors.head = NULL;
-        context->channels[i].processors.tail = NULL;
-    }
+    Assert(pthread_mutex_init(&context->mutex, NULL) == 0, "Failed to initialise mutex");
+    Assert(pthread_cond_init(&context->cond, NULL) == 0, "Failed to initialise condition variable");
+
+    memset(context->channels, 0, MAX_CHANNELS);
+    memset(context->processors, 0, MAX_PROCESSORS);
 
     context->masterVolumeScale = masterVolumeScale;
+    context->channelMask = 0;
+    context->processorMask = 0;
 }
 
 void CoreEngine_Start(CoreEngineContext* context)
@@ -125,10 +220,22 @@ void CoreEngine_Start(CoreEngineContext* context)
     status = AudioUnitSetProperty(context->unit, 
                                   kAudioUnitProperty_StreamFormat, 
                                   kAudioUnitScope_Input, 
-                                  0, 
+                                  0, // Global scope
                                   &context->streamFormat, 
                                   sizeof(context->streamFormat));
     Assert(status == noErr, "Could not set stream format. Status: %d", status);
+
+    const UInt32 maxFrames = 1024;
+    status = AudioUnitSetProperty(
+        context->unit,
+        kAudioUnitProperty_MaximumFramesPerSlice,
+        kAudioUnitScope_Global,
+        0, // Global scope
+        &maxFrames,
+        sizeof(maxFrames)
+    );
+
+    Assert(status == noErr, "Failed to set desired buffer size. Status: %d", status);
 
     AURenderCallbackStruct inputCallback = (AURenderCallbackStruct) {
         .inputProc = AudioRenderCallback,
@@ -138,7 +245,7 @@ void CoreEngine_Start(CoreEngineContext* context)
     status = AudioUnitSetProperty(context->unit, 
                                   kAudioUnitProperty_SetRenderCallback, 
                                   kAudioUnitScope_Input, 
-                                  0, 
+                                  0, // Global scope
                                   &inputCallback, 
                                   sizeof(inputCallback));
     Assert(status == noErr, "Could not set render callback. Status: %d", status);
@@ -161,8 +268,15 @@ void CoreEngine_Start(CoreEngineContext* context)
 void CoreEngine_Stop(CoreEngineContext* context)
 {
     OSStatus status;
+    stopped_ = true; // Required to prevent recursion on pacic
 
     LogInfo("Deinitializing CoreAudio");
+
+    // Request stop and wait for fade out
+    context->flags |= ENGINE_STOP_REQUESTED;
+    Assert(pthread_mutex_lock(&context->mutex) == 0, "Failed to lock mutex");
+    Assert(pthread_cond_wait(&context->cond, &context->mutex) == 0, "Failed to wait for condition variable");
+    Assert(pthread_mutex_unlock(&context->mutex) == 0, "Failed to unlock mutex");
 
     status = AudioOutputUnitStop(context->unit);
     Assert(status == noErr, "Failed to stop audio unit. Status: %d", status);
@@ -173,49 +287,61 @@ void CoreEngine_Stop(CoreEngineContext* context)
     status = AudioComponentInstanceDispose(context->unit);
     Assert(status == noErr, "Failed to dispose audio unit. Status: %d", status);
 
-    for (UInt16 i = 0; i < context->numChannels; i++) {
-        JamAudioProcessor* node = context->channels[i].processors.head;
-        while (node != NULL) {
-            Assert(node->Destroy, "Processor Destroy method is null");
-            node->Destroy(node);
-            node = node->next;
+    UInt16 numProcessors = __builtin_popcount(context->processorMask);
+    for (UInt16 i = 0; i < MAX_PROCESSORS; i++) {
+        if (numProcessors == 0)
+            break;
+        if (context->processorMask & (1 << i)) {
+            JamAudioProcessor* proc = &context->processors[i];
+            if (proc->Destroy) {
+                proc->Destroy(proc);
+            }
+            numProcessors--;
         }
     }
+
+    Assert(pthread_mutex_destroy(&context->mutex) == 0, "Failed to destroy mutex");
+    Assert(pthread_cond_destroy(&context->cond) == 0, "Failed to destroy condition variable");
 }
 
-JamAudioChannelId CoreEngine_CreateChannel(CoreEngineContext *context)
+void CoreEngine_EnableChannel(CoreEngineContext *context, UInt16 channelId, bool enable)
 {
-    Assert(context->numChannels <= MAX_CHANNELS, "Reached maximum number of channels %d", MAX_CHANNELS);
-    JamAudioChannelId channelId = context->numChannels;
-    context->numChannels++;
-    return channelId;
-}
+    Assert(context, "Context is null");
+    Assert(channelId < MAX_CHANNELS, "Channel ID invalid");
 
-void CoreEngine_AddProcessor(CoreEngineContext *context, JamAudioChannelId channelId, JamAudioProcessor* processor)
-{
-    Assert(channelId < context->numChannels, "Invalid channel id: %d", channelId);
-    Assert(processor, "Processor is null");
-
-    processor->next = NULL;
-
-    if (context->channels[channelId].processors.head == NULL) {
-        context->channels[channelId].processors.head = processor;
-        context->channels[channelId].processors.tail = processor;
+    if (enable) {
+        context->channelMask |= (1 << channelId);
     }
     else {
-        context->channels[channelId].processors.tail->next = processor;
-        context->channels[channelId].processors.tail = processor;
+        context->channelMask &= ~(1 << channelId);
     }
+}
+
+JamAudioProcessor* CoreEngine_CreateProcessor(CoreEngineContext* context, JamProcessFunc process, JamDestroyFunc destroy, void* args)
+{
+    Assert(context, "Context is null");
+    // TODO assert capacity
+    
+    // Find free slot, the first trailing zero in the mask
+    UInt16 freeSlot = (context->processorMask == 0) ? 0 : __builtin_ctz((unsigned int)~context->processorMask);
+    context->processorMask |= (1 << freeSlot);
+
+    JamAudioProcessor* processor = &context->processors[freeSlot];
+    processor->Process = process;
+    processor->Destroy = destroy;
+    processor->procData = args;
+    processor->channelMask = 0;
+
+    return processor;
 }
 
 void CoreEngine_Panic(void)
 {   
     // Prevent recursion in case CoreEngine_Stop fails, in such case we have no option but to hard kill
-    if (panicked_) {
+    if (stopped_) {
         exit(1);
     }
     
-    panicked_ = true;
     LogError("CoreEngine Panic");
 
     if (currentInstance_) {
@@ -225,4 +351,5 @@ void CoreEngine_Panic(void)
     // No going back!
     exit(0);
 }
+
 

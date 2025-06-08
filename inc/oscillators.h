@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdatomic.h>
 #include "core_engine.h"
 
 typedef enum {
@@ -11,15 +12,14 @@ typedef enum {
 } WaveformId;
 
 typedef struct {
-    WaveformId type;
-    double frequency;
-    double phase;
+    _Atomic(WaveformId) type;
+    _Atomic(double) frequency;
+    _Atomic(double) phase;
 } Oscillator;
 
-void Oscillator_Create(Oscillator* osc, 
-                        WaveformId type,
-                        double frequency,
-                        double phase,
-                        CoreEngineContext* engine, 
-                        JamAudioChannelId channelId);
+JamAudioProcessor* Oscillator_Create(Oscillator* osc, 
+                                        WaveformId type,
+                                        double frequency,
+                                        double phase,
+                                        CoreEngineContext* engine);
 

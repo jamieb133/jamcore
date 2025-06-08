@@ -8,7 +8,7 @@
 
 #define AllocRange(type, size) (type*)calloc(size, sizeof(type))
 #define AllocOne(type) (type*)calloc(1, sizeof(type))
-#define Dealloc(data) Assert(data, "Tried to deallocate null data"); free(data)
+#define Dealloc(data) Assert(data, "Tried to deallocate null data"); free(data); data = NULL
 
 // Utils
 #define ZeroMem(type, ptr, size) memset(ptr, 0, sizeof(type) * size)

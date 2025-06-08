@@ -1,6 +1,7 @@
 #include <core_engine.h>
 #include <oscillators.h>
 #include <time.h>
+#include <logger.h>
 
 int main()
 {
@@ -8,19 +9,48 @@ int main()
     memset(&context, 0, sizeof(CoreEngineContext));
 
     // Initialise Core Engine
-    CoreEngine_Init(&context, 0.5);
+    CoreEngine_Init(&context, 0.25);
 
-    // Create a channel to route the sin wave
-    JamAudioChannelId channelId = CoreEngine_CreateChannel(&context);
 
+    // Create sin osc
     Oscillator sinOsc;
-    Oscillator_Create(&sinOsc, WAVEFORM_SIN, 440.0, 0.0, &context, channelId);
+    JamAudioProcessor* sinProc = Oscillator_Create(&sinOsc, WAVEFORM_SIN, 440.0, 0.0, &context);
+
+    // Create sawtooth osc
+    Oscillator sawOsc;
+    JamAudioProcessor* sawProc = Oscillator_Create(&sawOsc, WAVEFORM_SAW, 440.0, 0.0, &context);
+
+    // Route the oscillators through channels one and two
+    Processor_RouteChannel(sinProc, 0, true);
+    Processor_RouteChannel(sawProc, 1, true);
+
+    // Adjust channel controls
+    JamAudioChannel* channel0 = &context.channels[0];
+    JamAudioChannel* channel1 = &context.channels[1];
+    channel0->volume = 255;
+    channel1->volume = 25;
+    channel0->pan = 0; 
+    channel1->pan = 255; 
 
     // Start audio
     CoreEngine_Start(&context);
 
-    // Run the engine for 5 seconds
-    usleep(5000000);
+    // Unmute sin wave
+    CoreEngine_EnableChannel(&context, 0, true);
+
+    usleep(2000000);
+
+    // Solo the sawtooth wave
+    CoreEngine_EnableChannel(&context, 0, false);
+    CoreEngine_EnableChannel(&context, 1, true);
+
+    usleep(2000000);
+
+    // Play both
+    CoreEngine_EnableChannel(&context, 0, true);
+    CoreEngine_EnableChannel(&context, 1, true);
+
+    usleep(2000000);
 
     // Stop audio
     CoreEngine_Stop(&context);

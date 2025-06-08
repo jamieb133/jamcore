@@ -56,9 +56,9 @@ long long GetTimeMs();
 #define LogWarnRaw(format, ...) _LogRaw(LOG_WARNING, format, ##__VA_ARGS__)
 #define LogErrorRaw(format, ...) _LogRaw(LOG_ERROR, format, ##__VA_ARGS__)
 
-#define Assert(cond, format, ...) _Assert(cond, format, ##__VA_ARGS__)
+#define Assert(cond, format, ...) _Assert(cond, #cond, format, ##__VA_ARGS__)
 
+void _Assert(bool condition, const char* condString, const char* format, ...);
 void _LogRaw(LogLevel level, const char* format, ...);
 void _LogMessage(LogLevel level, const char* format, ...);
-void _Assert(bool condition, const char* format, ...);
 

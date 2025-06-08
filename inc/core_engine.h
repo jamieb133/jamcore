@@ -1,54 +1,73 @@
 #pragma once
 
-#include <MacTypes.h>
 #include <stdbool.h>
+#include <stdatomic.h>
+#include <pthread.h>
+#include <MacTypes.h>
 #include <AudioToolbox/AudioToolbox.h>
 #include <CoreAudioTypes/CoreAudioBaseTypes.h>
+#include <stdint.h>
 
 #define MAX_CHANNELS 1024
-#define BUFFER_SIZE sizeof(Float32) // TODO: make configurable
+#define MAX_PROCESSORS 256
 
-static const UInt8 ChannelMuted = 1 << 0;
-static const UInt8 ChannelSoloed = 1 << 1;
-static const UInt8 ChannelMono = 1 << 2;
+#define BUFFER_SIZE 1024 // TODO: make configurable
 
-typedef struct {
-    UInt8 options;
-    double volume;
-} JamAudioChannelControl;
+#define CHANNEL_SOLO (1 << 0)
+#define CHANNEL_MONO (1 << 1)
+
+#define ENGINE_STOPPED (1 << 0)
+#define ENGINE_STOP_REQUESTED (1 << 1)
+
+typedef int8_t i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+
+typedef float f32;
+typedef double f64;
 
 typedef struct JamAudioProcessor {
-    struct JamAudioProcessor* next;
-
-    float* buffer;
-    int numFrames;
-    double sampleRate;
-    void* procData; // Processor specific context
-
-    void (*Process)(struct JamAudioProcessor* self);
+    _Atomic(u16) channelMask;
+    void* procData;
+    void (*Process)(struct JamAudioProcessor* self, int numFrames, double sampleRate, float** buffers, UInt16 numBuffers);
     void (*Destroy)(struct JamAudioProcessor* self);
 } JamAudioProcessor;
 
-typedef struct {
-    JamAudioProcessor* head;
-    JamAudioProcessor* tail;
-} AudioProcessorList;
+typedef void (*JamProcessFunc)(struct JamAudioProcessor*, int, double, float**, UInt16); 
+typedef void (*JamDestroyFunc)(struct JamAudioProcessor*); 
 
 typedef struct {
-    AudioProcessorList processors;
+    _Atomic(u8) options;
+    _Atomic(u8) volume;
+    _Atomic(u8) pan; 
     float scratchBuffer[BUFFER_SIZE];
 } JamAudioChannel;
 
-typedef UInt16 JamAudioChannelId;
-
-typedef struct CoreEngineContext {
+typedef struct {
     // Playback State
-    double startTime;
-    double endTime;
-    float masterVolumeScale;
+    f32 masterVolumeScale;
+
+    // Thread messaging
+    _Atomic(u8) flags;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+
     // Channels
     JamAudioChannel channels[MAX_CHANNELS];
-    UInt16 numChannels;
+    _Atomic(u16) channelMask;
+
+    // Processors
+    // TODO: processor local memory pool, bump allocate processor specific context
+    // UInt8 mempool[MAX_PROCESSORS * MAX_LOCAL_MEM];
+    JamAudioProcessor processors[MAX_PROCESSORS];
+    u16 processorMask;
+
     // CoreAudio Data
     AudioUnit unit;
     AudioComponentDescription defaultOutputDesc;
@@ -56,10 +75,25 @@ typedef struct CoreEngineContext {
     AudioComponent component;
 } CoreEngineContext;
 
-void CoreEngine_Init(CoreEngineContext* context, float masterVolumeScale);
+// Core Engine Functions
+void CoreEngine_Init(CoreEngineContext* context, f32 masterVolumeScale);
 void CoreEngine_Start(CoreEngineContext* context);
 void CoreEngine_Stop(CoreEngineContext* context);
-JamAudioChannelId CoreEngine_CreateChannel(CoreEngineContext* context);
-void CoreEngine_AddProcessor(CoreEngineContext* context, JamAudioChannelId channel, JamAudioProcessor* processor);
+void CoreEngine_EnableChannel(CoreEngineContext* context, u16 channelId, bool enable);
+JamAudioProcessor* CoreEngine_CreateProcessor(CoreEngineContext* context, 
+                                                JamProcessFunc process, 
+                                                JamDestroyFunc destroy, 
+                                                void* args);
 void CoreEngine_Panic(void);
+
+// Processor Functions
+static inline void Processor_RouteChannel(JamAudioProcessor* processor, u16 channelId, bool enable)
+{
+    if (enable) {
+        processor->channelMask |= (1 << channelId);
+    }
+    else {
+        processor->channelMask &= ~(1 << channelId);
+    }
+}
 

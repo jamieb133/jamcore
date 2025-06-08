@@ -71,14 +71,14 @@ void _LogRaw(LogLevel level, const char *format, ...)
     va_end(args);
 }
 
-void _Assert(bool condition, const char *format, ...)
+void _Assert(bool condition, const char* condString, const char *format, ...)
 {
     if (!condition)
     {
         char formatBuf[256];
         va_list args;
         va_start(args, format);
-        sprintf(formatBuf, "ASSERT FAILED -- %s\n", format);
+        sprintf(formatBuf, "ASSERT FAILED -- %s (%s)\n", format, condString);
         vprintf(formatBuf, args);
         va_end(args);
 
