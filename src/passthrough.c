@@ -1,3 +1,4 @@
+#include "logger.h"
 #include <passthrough.h>
 
 static void ProcessPassthrough(f64 sampleRate, u16 numFrames, f32* buffer, void* data)
@@ -11,5 +12,6 @@ static void ProcessPassthrough(f64 sampleRate, u16 numFrames, f32* buffer, void*
 
 u16 Passthrough_Create(CoreEngineContext* ctx)
 {
+    LogInfo("Creating passthrough processor");
     return CoreEngine_CreateProcessor(ctx, ProcessPassthrough, NULL, NULL);
 }

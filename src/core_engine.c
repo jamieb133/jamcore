@@ -9,21 +9,9 @@
 #include <core_engine.h>
 #include <logger.h>
 #include <stdint.h>
+#include <utils.h>
 
 static CoreEngineContext* instance_ = NULL;
-
-static inline u16 Bitcount(u16 mask) 
-{
-    return (u16)__builtin_popcount((i32)mask);
-}
-
-static inline void BufferProduct(f32* buffer, f32 value)
-{
-    // TODO: SIMD optimisation?
-    for (u16 i = 0; i < BUFFER_SIZE; i++) {
-        buffer[i] *= value;
-    }
-}
 
 static void HandleSigInt(int sig)
 {
@@ -42,7 +30,7 @@ static void Traverse(JamAudioProcessor* processors, u16 processorId, f64 sampleR
 
     // End of branch, write to master buffer then exit
     if (processor->outputRoutingMask == 0) {
-        memcpy(outputBuffer, inputBuffer, BUFFER_SIZE * sizeof(f32));
+        BufferParallelSum(outputBuffer, inputBuffer, BUFFER_SIZE);
         return;
     }
 
@@ -135,7 +123,7 @@ static OSStatus AudioRenderCallback(void* args,
         &ctx->scratchAllocator
     );
 
-    BufferProduct(masterBuffer->mData, ctx->masterVolumeScale);
+    BufferProduct(masterBuffer->mData, ctx->masterVolumeScale, BUFFER_SIZE);
     ScratchAllocator_Release(&ctx->scratchAllocator);
 
     return noErr;
@@ -305,6 +293,8 @@ u16 CoreEngine_CreateProcessor(CoreEngineContext* ctx, JamProcessFunc procFunc, 
     // Find free slot, the first trailing zero in the mask
     UInt16 freeSlot = (ctx->processorMask == 0) ? 0 : __builtin_ctz((unsigned int)~ctx->processorMask);
     ctx->processorMask |= (1 << freeSlot);
+
+    LogInfo("Found free slot %d for new processor", freeSlot);
 
     JamAudioProcessor* processor = &ctx->processors[freeSlot];
     processor->inputRoutingMask = 0;
