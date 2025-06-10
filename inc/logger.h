@@ -48,9 +48,9 @@ long long GetTimeMs();
 #define LogWarnOnce(format, ...) LogOnce(LOG_WARNING, format, ##__VA_ARGS__)
 #define LogErrorOnce(format, ...) LogOnce(LOG_ERROR, format, ##__VA_ARGS__)
 
-//#define LogInfoPeriodic(format, periodMs, ...) LogPeriodic(LOG_INFO, periodMs, format, ##__VA_ARGS__)
-//#define LogWarnPeriodic(format, periodMs, ...) LogPeriodic(LOG_WARNING, periodMs, format, ##__VA_ARGS__)
-//#define LogErrorPeriodic(format, periodMs, ...) LogPeriodic(LOG_ERROR, periodMs, format, ##__VA_ARGS__)
+#define LogInfoPeriodic(periodMs, format, ...) LogPeriodic(LOG_INFO, periodMs, format, ##__VA_ARGS__)
+#define LogWarnPeriodic(periodMs, format, ...) LogPeriodic(LOG_WARNING, periodMs, format, ##__VA_ARGS__)
+#define LogErrorPeriodic(periodMs, format, ...) LogPeriodic(LOG_ERROR, periodMs, format, ##__VA_ARGS__)
 
 #define LogInfoRaw(format, ...) _LogRaw(LOG_INFO, format, ##__VA_ARGS__)
 #define LogWarnRaw(format, ...) _LogRaw(LOG_WARNING, format, ##__VA_ARGS__)

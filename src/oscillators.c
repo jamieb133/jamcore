@@ -1,4 +1,3 @@
-#include <MacTypes.h>
 #include <math.h>
 #include <stdlib.h>
 
@@ -13,11 +12,11 @@ static const char* waveformStrings_[WAVEFORM_COUNT] = {
     "WAVEFORM_SAW",
 };
 
-static void ProcessCallback(JamAudioProcessor* self, int numFrames, double sampleRate, float**buffers, UInt16 numBuffers)
+static void ProcessCallback(f64 sampleRate, u16 numFrames, f32* buffer, void* data)
 {
     LogInfoOnce("frames: %d sampleRate: %f", numFrames, sampleRate);
 
-    Oscillator* osc = (Oscillator*)self->procData;
+    Oscillator* osc = (Oscillator*)data;
     Assert(osc, "Oscillator is null");
 
     double phaseIncrement = (2.0 * M_PI * osc->frequency) / sampleRate;
@@ -39,11 +38,9 @@ static void ProcessCallback(JamAudioProcessor* self, int numFrames, double sampl
         }
 
         UInt16 baseSampleIndex = i * 2;
-
-        for (UInt16 j = 0; j < numBuffers; j++) {
-            buffers[j][baseSampleIndex] = sample; // Left channel
-            buffers[j][baseSampleIndex + 1] = sample; // Right channel
-        }
+            
+        buffer[baseSampleIndex] += sample * osc->amplitude; // Left channel
+        buffer[baseSampleIndex + 1] += sample * osc->amplitude; // Right channel
 
         osc->phase += phaseIncrement;
         while (osc->phase >= 2.0 * M_PI) {
@@ -52,11 +49,12 @@ static void ProcessCallback(JamAudioProcessor* self, int numFrames, double sampl
     }
 }
 
-JamAudioProcessor* Oscillator_Create(Oscillator* osc, 
-                                    WaveformId type,
-                                    double frequency,
-                                    double phase,
-                                    CoreEngineContext* engine)
+u16 Oscillator_Create(Oscillator* osc, 
+                        CoreEngineContext* ctx, 
+                        WaveformId type, 
+                        f64 frequency, 
+                        f64 phase,
+                        f64 amplitude) 
 {
     Assert(osc != NULL, "Oscillator is NULL");
     Assert(type < WAVEFORM_COUNT, "Waveform type ID invalid");
@@ -67,7 +65,8 @@ JamAudioProcessor* Oscillator_Create(Oscillator* osc,
     osc->phase = phase;
     osc->frequency = frequency;
     osc->type = type;
+    osc->amplitude = amplitude;
 
-    return CoreEngine_CreateProcessor(engine, ProcessCallback, NULL, (void*)osc);
+    return CoreEngine_CreateProcessor(ctx, ProcessCallback, NULL, (void*)osc);
 }
 

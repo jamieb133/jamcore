@@ -2,7 +2,9 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
+
 #include <logger.h>
+#include <types.h>
 
 // TODO: allocate from global arena or bump allocator
 
@@ -18,4 +20,14 @@
     unsigned char __zeros[sizeof(type) * size] = { 0, };\
     Assert(memcmp((const void*)__zeros, (const void*)data, sizeof(type) * size) == 0, format, ##__VA_ARGS__);\
 }
+
+typedef struct {
+    u8* base;
+    u16 offset, size;
+} ScratchAllocator;
+
+void ScratchAllocator_Init(ScratchAllocator* alloc, u8* base, u16 size);
+void* ScratchAllocator_Alloc(ScratchAllocator* alloc, u16 size);
+void* ScratchAllocator_Calloc(ScratchAllocator* alloc, u16 size);
+void ScratchAllocator_Release(ScratchAllocator* alloc);
 

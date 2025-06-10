@@ -83,7 +83,7 @@ void _Assert(bool condition, const char* condString, const char *format, ...)
         va_end(args);
 
         // No going back!
-        CoreEngine_Panic();
+        CoreEngine_GlobalPanic();
     }
 }
 

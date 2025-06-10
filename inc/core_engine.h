@@ -1,5 +1,6 @@
 #pragma once
 
+#include "allocator.h"
 #include <stdbool.h>
 #include <stdatomic.h>
 #include <pthread.h>
@@ -8,92 +9,67 @@
 #include <CoreAudioTypes/CoreAudioBaseTypes.h>
 #include <stdint.h>
 
-#define MAX_CHANNELS 1024
-#define MAX_PROCESSORS 256
+#include <types.h>
+
+#define MAX_PROCESSORS 4096
+
+#define STACK_ARENA_SIZE_KB 32
+#define DEFAULT_HEAP_ARENA_SIZE_KB 30000
 
 #define BUFFER_SIZE 1024 // TODO: make configurable
 
 #define CHANNEL_SOLO (1 << 0)
 #define CHANNEL_MONO (1 << 1)
 
-#define ENGINE_STOPPED (1 << 0)
-#define ENGINE_STOP_REQUESTED (1 << 1)
+#define ENGINE_STOP_REQUESTED (1 << 0)
+#define ENGINE_AUDIO_THREAD_SILENCED (1 << 1)
+#define ENGINE_STOPPED (1 << 2)
+#define ENGINE_DEINITIALIZED (1 << 3)
 
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
 
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
+typedef void (*JamProcessFunc)(f64 sampleRate, u16 numFrames, f32* buffer, void* data); 
+typedef void (*JamDestroyFunc)(void); 
 
-typedef float f32;
-typedef double f64;
-
-typedef struct JamAudioProcessor {
-    _Atomic(u16) channelMask;
+typedef struct {
+    u16 inputRoutingMask, outputRoutingMask;
     void* procData;
-    void (*Process)(struct JamAudioProcessor* self, int numFrames, double sampleRate, float** buffers, UInt16 numBuffers);
-    void (*Destroy)(struct JamAudioProcessor* self);
+    JamProcessFunc Process;
+    JamDestroyFunc Destroy;
 } JamAudioProcessor;
 
-typedef void (*JamProcessFunc)(struct JamAudioProcessor*, int, double, float**, UInt16); 
-typedef void (*JamDestroyFunc)(struct JamAudioProcessor*); 
-
 typedef struct {
-    _Atomic(u8) options;
-    _Atomic(u8) volume;
-    _Atomic(u8) pan; 
-    float scratchBuffer[BUFFER_SIZE];
-} JamAudioChannel;
-
-typedef struct {
-    // Playback State
+    // Playback state
     f32 masterVolumeScale;
+    f32 sampleRate; 
 
     // Thread messaging
     _Atomic(u8) flags;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
 
+    // Allocators
+    void* heapArena;
+    // TODO: bucket arena allocator
+    u8 scratchArena[STACK_ARENA_SIZE_KB * 1024];
+    ScratchAllocator scratchAllocator;
+
     // Channels
-    JamAudioChannel channels[MAX_CHANNELS];
-    _Atomic(u16) channelMask;
-
-    // Processors
-    // TODO: processor local memory pool, bump allocate processor specific context
-    // UInt8 mempool[MAX_PROCESSORS * MAX_LOCAL_MEM];
-    JamAudioProcessor processors[MAX_PROCESSORS];
     u16 processorMask;
+    u16 sourceNode;
+    JamAudioProcessor processors[MAX_PROCESSORS];
 
-    // CoreAudio Data
-    AudioUnit unit;
-    AudioComponentDescription defaultOutputDesc;
-    AudioStreamBasicDescription streamFormat;
-    AudioComponent component;
+    // CoreAudio audio unit
+    AudioUnit caUnit;
 } CoreEngineContext;
 
 // Core Engine Functions
-void CoreEngine_Init(CoreEngineContext* context, f32 masterVolumeScale);
-void CoreEngine_Start(CoreEngineContext* context);
-void CoreEngine_Stop(CoreEngineContext* context);
-void CoreEngine_EnableChannel(CoreEngineContext* context, u16 channelId, bool enable);
-JamAudioProcessor* CoreEngine_CreateProcessor(CoreEngineContext* context, 
-                                                JamProcessFunc process, 
-                                                JamDestroyFunc destroy, 
-                                                void* args);
-void CoreEngine_Panic(void);
-
-// Processor Functions
-static inline void Processor_RouteChannel(JamAudioProcessor* processor, u16 channelId, bool enable)
-{
-    if (enable) {
-        processor->channelMask |= (1 << channelId);
-    }
-    else {
-        processor->channelMask &= ~(1 << channelId);
-    }
-}
+void CoreEngine_Init(CoreEngineContext* ctx, f32 masterVolumeScale, u64 heapArenaSizeKb);
+void CoreEngine_Start(CoreEngineContext* ctx);
+void CoreEngine_Stop(CoreEngineContext* ctx);
+void CoreEngine_SetSource(CoreEngineContext* ctx, u16 id);
+u16 CoreEngine_CreateProcessor(CoreEngineContext* ctx, JamProcessFunc procFunc, JamDestroyFunc destFunc, void* data);
+void CoreEngine_RemoveProcessor(CoreEngineContext* ctx, u16 id);
+void CoreEngine_Route(CoreEngineContext* ctx, u16 inputId, u16 outputId, bool shouldRoute);
+void CoreEngine_Panic(CoreEngineContext* ctx);
+void CoreEngine_GlobalPanic(void);
 
