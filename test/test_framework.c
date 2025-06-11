@@ -5,9 +5,13 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdarg.h>
+#include <sys/_pthread/_pthread_cond_t.h>
+#include <sys/_pthread/_pthread_mutex_t.h>
 #include <sys/_types/_va_list.h>
 #include <sys/acl.h>
 #include <sys/time.h>
+#include <pthread.h>
+#include <unistd.h>
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -15,7 +19,12 @@
 #define ANSI_COLOR_BLUE    "\x1b[34m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
+#define NUM_THREADS 4
+
 static jmp_buf jumpBuffer_;
+static u16 currentTestNum_ = 0;
+static pthread_t threadPool_[NUM_THREADS];
+static pthread_mutex_t mutex_;
 
 TestSuite testSuites_[MAX_SUITES];
 u16 numSuites_ = 0;
@@ -83,7 +92,7 @@ static void WriteJUnitReport(void)
         StringConcat(&junit, "  <testsuite ");
         StringConcat(&junit, "name=\"%s\" ", suite->name);
         StringConcat(&junit, "tests=\"%d\" ", suite->numTests);
-        StringConcat(&junit, "failures=\"%d\" ", suite->numTests - suite->numPassed);
+        StringConcat(&junit, "failures=\"%d\" ", suite->numFailed);
         StringConcat(&junit, "skipped=\"%d\" ", 0);
         StringConcat(&junit, "errors=\"%d\" ", 0);
         StringConcat(&junit, "time=\"%d\" ", suite->duration);
@@ -133,28 +142,36 @@ void TestAssert(bool condition, const char* testMacro, const char* file, i32 lin
     longjmp(jumpBuffer_, 1);
 }
 
-i32 RunAllTests()
+void* TestRunner(void* args)
 {
-    u16 numPassed = 0;
-    u16 numFailed = 0;
-    TestInfo* failedTests[MAX_SUITES * MAX_TESTS_PER_SUITE];
+    (void)args;
+    
+    for (;;) {
+        pthread_mutex_lock(&mutex_);
 
-    for (u16 i = 0; i < numSuites_; i++) {
-        TestSuite* suite = &testSuites_[i];
+        if (currentTestNum_ >= numSuites_) {
+            pthread_mutex_unlock(&mutex_);
+            break;
+        }
+
+        TestSuite* suite = &testSuites_[currentTestNum_];
+        currentTestNum_++;
+        pthread_mutex_unlock(&mutex_);
+
         u64 suiteStartTime = GetTimeMs();
         suite->Setup(suite);
 
         for (u16 j = 0; j < suite->numTests; j++) {
             TestInfo* test = &suite->testInfo[j];
             u64 testStartTime;
+            printf("%s %s, %d\n", suite->name, test->name, suite->numTests);
             suite->Bringup(test);
 
             if (setjmp(jumpBuffer_)) {
                 // Test failed
                 test->duration = GetTimeMs() - testStartTime;
-                failedTests[numFailed] = test;
                 test->passed = false;
-                numFailed++;
+                suite->numFailed++;
             }
             else {
                 // Test passed
@@ -162,8 +179,6 @@ i32 RunAllTests()
                 test->RunTest(test);            
                 test->duration = GetTimeMs() - testStartTime;
                 test->passed = true;
-                suite->numPassed++;
-                numPassed++;
             }
             
             suite->Teardown();
@@ -172,28 +187,65 @@ i32 RunAllTests()
         suite->duration = GetTimeMs() - suiteStartTime;
     }
 
+    return NULL;
+}
+
+i32 RunAllTests()
+{
+    pthread_mutex_init(&mutex_, NULL);
+
+    for (u8 i = 0; i < NUM_THREADS; i++) {
+        pthread_t threadId;
+        pthread_create(&threadId, NULL, TestRunner, NULL);
+        threadPool_[i] = threadId;
+    }
+
+    for (u8 i = 0; i < NUM_THREADS; i++) {
+        pthread_join(threadPool_[i], NULL);
+    }
+    
     printf("%s========================================================\n", ANSI_COLOR_BLUE);
     printf("-- Test Summary --\n");
     printf("========================================================%s\n", ANSI_COLOR_RESET);
     
+    u16 totalPassed = 0, totalFailed = 0;
     for (u16 i = 0; i < numSuites_; i++) {
         TestSuite* suite = &testSuites_[i];
-        printf("%s: %d passed, %d failed (%d ms)\n", suite->name, suite->numPassed, suite->numTests - suite->numPassed, suite->duration);
+        totalPassed += suite->numTests - suite->numFailed;
+        totalFailed += suite->numFailed;
     }
 
-    if (numFailed > 0) {
-        printf("%sTests failed! (%d passed, %d failed)%s\n", ANSI_COLOR_RED, numPassed, numFailed, ANSI_COLOR_RESET);
-        for (u16 i = 0; i < numFailed; i++) {
-            TestInfo* test = failedTests[i];
-            printf("%s -- %s (%s:%d)%s\n", ANSI_COLOR_YELLOW, test->name, test->failureInfo.file, test->failureInfo.line, ANSI_COLOR_RESET);
+    if (totalFailed > 0) {
+        printf("%sTests failed! (%d passed, %d failed)%s\n", ANSI_COLOR_RED, totalPassed, totalFailed, ANSI_COLOR_RESET);
+        for (u16 i = 0; i < numSuites_; i++) {
+            TestSuite* suite = &testSuites_[i];
+            if (suite->numFailed == 0) {
+                continue;
+            }
+            printf("%s > %s (%d):%s\n", ANSI_COLOR_YELLOW, suite->name, suite->numFailed, ANSI_COLOR_RESET);
+            for (u16 j = 0; j < suite->numTests; j++) {
+                TestInfo* test = &suite->testInfo[j];
+                if (test->passed) {
+                    continue;
+                }
+                
+                printf("%s   -- %s (%s:%d)%s\n", 
+                        ANSI_COLOR_YELLOW, 
+                        test->name, 
+                        test->failureInfo.file, 
+                        test->failureInfo.line, 
+                        ANSI_COLOR_RESET);
+            }
         }
     }
     else {
-        printf("%sAll tests passed! (%d passed, %d failed)%s\n", ANSI_COLOR_GREEN, numPassed, numFailed, ANSI_COLOR_RESET);
+        printf("%sAll tests passed! (%d passed, %d failed)%s\n", 
+                ANSI_COLOR_GREEN, totalPassed, totalFailed, ANSI_COLOR_RESET);
     }
 
     WriteJUnitReport();
+    pthread_mutex_destroy(&mutex_);
 
-    return numFailed > 0 ? 1 : 0;
+    return totalFailed > 0 ? 1 : 0;
 }
 

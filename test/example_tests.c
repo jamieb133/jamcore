@@ -14,7 +14,6 @@ TEST(ExampleTests, MyFailingTest)
 
 TEST(ExampleTests, MyPassingTest)
 {
-    usleep(1234 * 1000); // Demonstrate the duration output 
     for (u8 i = 0; i < 128; i++) {
         ASSERT_TRUE(i < 128);
     }

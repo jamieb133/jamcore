@@ -23,7 +23,7 @@ typedef struct TestInfo {
 typedef struct TestSuite{
     const char* name;
     u8 numTests;
-    u8 numPassed;
+    u8 numFailed;
     u32 duration;
     TestInfo testInfo[MAX_TESTS_PER_SUITE];
     void (*Setup)(struct TestSuite*);
@@ -51,16 +51,16 @@ extern u16 numSuites_;
                                       extern void _TEST_BRINGUP_FUNC(suiteName) (struct TestInfo* i);\
                                       extern void _TEST_TEARDOWN_FUNC(suiteName) (void);
 
-#define ADD_TEST_SUITE(suiteName) testSuites_[numSuites_++] = (TestSuite) { .name = #suiteName, .numTests = 0, .numPassed = 0, \
+#define ADD_TEST_SUITE(suiteName) testSuites_[numSuites_++] = (TestSuite) { .name = #suiteName, .numTests = 0, .numFailed = 0, \
                                                                           .Setup = _TEST_SETUP_FUNC(suiteName), \
                                                                           .Bringup = _TEST_BRINGUP_FUNC(suiteName), \
                                                                           .Teardown = _TEST_TEARDOWN_FUNC(suiteName) }
 
-#define ADD_TEST(testSuite, testName) __testSuite->testInfo[__testSuite->numTests++] = (TestInfo) { .name = #testName,\
+#define ADD_TEST(testSuite, testName) do { __testSuite->testInfo[__testSuite->numTests++] = (TestInfo) { .name = #testName,\
                                                                                                     .numChecksPassed = 0, \
-                                                                                                    .RunTest = _TEST_BODY_FUNC(testSuite, testName) }
+                                                                                                    .RunTest = _TEST_BODY_FUNC(testSuite, testName) }; } while(0)
 
-#define ASSERT_TRUE(cond) TestAssert(cond, "ASSERT_TRUE(" TO_STRING(cond) ")", __FILE__, __LINE__, __testInfo)
+#define ASSERT_TRUE(cond) do { TestAssert(cond, "ASSERT_TRUE(" TO_STRING(cond) ")", __FILE__, __LINE__, __testInfo); } while(0)
 
 void TestAssert(bool condition, const char* message, const char* file, i32 line, TestInfo* testResult);
 
