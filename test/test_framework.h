@@ -2,6 +2,7 @@
 
 #include <types.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #define MAX_TESTS_PER_SUITE 128
 #define MAX_SUITES 64
@@ -9,9 +10,12 @@
 typedef struct TestInfo {
     const char* name;
     u64 numChecksPassed;
+    u32 duration;
+    bool passed;
     struct {
         i32 line;
         const char* file;
+        const char* message;
     } failureInfo;
     void (*RunTest)(struct TestInfo*);
 } TestInfo;
@@ -20,6 +24,7 @@ typedef struct TestSuite{
     const char* name;
     u8 numTests;
     u8 numPassed;
+    u32 duration;
     TestInfo testInfo[MAX_TESTS_PER_SUITE];
     void (*Setup)(struct TestSuite*);
     void (*Bringup)(struct TestInfo*);
@@ -28,6 +33,9 @@ typedef struct TestSuite{
 
 extern TestSuite testSuites_[MAX_SUITES];
 extern u16 numSuites_;
+
+#define STRINGIFY(x) #x
+#define TO_STRING(x) STRINGIFY(x)
 
 #define _TEST_SETUP_FUNC(suiteName) __##suiteName##_##Setup
 #define _TEST_BRINGUP_FUNC(suiteName) __##suiteName##_##Bringup
@@ -52,10 +60,9 @@ extern u16 numSuites_;
                                                                                                     .numChecksPassed = 0, \
                                                                                                     .RunTest = _TEST_BODY_FUNC(testSuite, testName) }
 
-#define ASSERT_TRUE(cond) TestAssert(cond, __FILE__, __LINE__, __testInfo)
+#define ASSERT_TRUE(cond) TestAssert(cond, "ASSERT_TRUE(" TO_STRING(cond) ")", __FILE__, __LINE__, __testInfo)
 
-void TestAssert(bool condition, const char* file, i32 line, TestInfo* testResult);
-void TestCheck(bool condition, const char* file, i32 line, TestInfo* testResult);
+void TestAssert(bool condition, const char* message, const char* file, i32 line, TestInfo* testResult);
 
 i32 RunAllTests();
 

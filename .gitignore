@@ -2,3 +2,5 @@ build/*
 .cache/*
 log.txt
 *.log
+compile_commands.json
+*.xml
