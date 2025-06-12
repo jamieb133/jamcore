@@ -20,6 +20,12 @@ static void HandleSigInt(int sig)
     CoreEngine_GlobalPanic();
 }
 
+static void AssertHandler(const char* message, const char* file, i32 line)
+{
+    fprintf(stderr, "%s %s:%d\n", message, file, line);
+    CoreEngine_GlobalPanic();
+}
+
 static void Traverse(JamAudioProcessor* processors, u16 processorId, f64 sampleRate, u16 numFrames, f32* inputBuffer, f32* outputBuffer, u8 stackDepth, ScratchAllocator* alloc)
 {
     Assert(stackDepth < 128, "Stack depth limit exceeded");
@@ -131,6 +137,8 @@ static OSStatus AudioRenderCallback(void* args,
 
 void CoreEngine_Init(CoreEngineContext *ctx, float masterVolumeScale, u64 heapArenaSizeKb)
 {
+    RegisterAssertHandler(AssertHandler);
+
     Assert(instance_ == NULL, "Error, already existing instance of engine");
     instance_ = ctx;
 

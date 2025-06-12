@@ -82,7 +82,6 @@ run: all
 	@$(TARGET_EXE)
 
 test: all
-	@echo "Running tests..."
 	@$(TEST_EXE)
 
 debug: $(TARGET_EXE)

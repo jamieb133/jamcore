@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <types.h>
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -56,9 +57,11 @@ long long GetTimeMs();
 #define LogWarnRaw(format, ...) _LogRaw(LOG_WARNING, format, ##__VA_ARGS__)
 #define LogErrorRaw(format, ...) _LogRaw(LOG_ERROR, format, ##__VA_ARGS__)
 
-#define Assert(cond, format, ...) _Assert(cond, #cond, format, ##__VA_ARGS__)
+#define Assert(cond, format, ...) _Assert(cond, #cond, __FILE__, __LINE__, format, ##__VA_ARGS__)
 
-void _Assert(bool condition, const char* condString, const char* format, ...);
+void _Assert(bool condition, const char* condString, const char* file, i32 line, const char* format, ...);
 void _LogRaw(LogLevel level, const char* format, ...);
 void _LogMessage(LogLevel level, const char* format, ...);
+
+void RegisterAssertHandler(void (*handler)(char const*, const char*, i32));
 

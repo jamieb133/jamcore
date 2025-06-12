@@ -20,7 +20,21 @@ static const char* colors_[LOG_NUM_LEVELS] = {
     ANSI_COLOR_RED, // ERROR
 };
 
+static void DefaultAssertHandler(const char* message, const char* file, i32 line);
+
 static LogLevel currentLevel_ = LOG_INFO;
+static void (*assertHandler_)(const char*, const char*, i32) = DefaultAssertHandler;
+
+static void DefaultAssertHandler(const char* message, const char* file, i32 line)
+{
+    fprintf(stderr, "%s %s:%d\n", message, file , line);
+    exit(1);
+}
+
+void RegisterAssertHandler(void (*handler)(const char *, const char *, i32))
+{
+    assertHandler_ = handler;
+}
 
 long long GetTimeMs()
 {
@@ -71,19 +85,20 @@ void _LogRaw(LogLevel level, const char *format, ...)
     va_end(args);
 }
 
-void _Assert(bool condition, const char* condString, const char *format, ...)
+void _Assert(bool condition, const char* condString, const char* file, i32 line, const char *format, ...)
 {
     if (!condition)
     {
         char formatBuf[256];
+        char outputBuf[256];
         va_list args;
+
+        sprintf(formatBuf, "ASSERT FAILED -- %s (%s)", format, condString);
         va_start(args, format);
-        sprintf(formatBuf, "ASSERT FAILED -- %s (%s)\n", format, condString);
-        vprintf(formatBuf, args);
+        vsprintf(outputBuf, formatBuf, args);
         va_end(args);
 
-        // No going back!
-        CoreEngine_GlobalPanic();
+        assertHandler_(outputBuf, file, line);
     }
 }
 

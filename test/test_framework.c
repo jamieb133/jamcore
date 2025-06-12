@@ -1,4 +1,6 @@
 #include "test_framework.h"
+#include <logger.h>
+
 #include <stdio.h>
 #include <setjmp.h>
 #include <string.h>
@@ -19,29 +21,23 @@
 #define ANSI_COLOR_BLUE    "\x1b[34m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
-#define NUM_THREADS 4
-
-static jmp_buf jumpBuffer_;
-static u16 currentTestNum_ = 0;
-static pthread_t threadPool_[NUM_THREADS];
-static pthread_mutex_t mutex_;
-
-TestSuite testSuites_[MAX_SUITES];
-u16 numSuites_ = 0;
-
 typedef struct {
     char* data;
     u64 capacity;
 } String;
 
-static inline u64 GetTimeMs()
-{
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (u64)tv.tv_sec * 1000 + (u64)tv.tv_usec / 1000;
-}
+TestSuite testSuites_[MAX_SUITES];
+u16 numSuites_ = 0;
+u16 currentTestNum_ = 0;
+pthread_t threadPool_[NUM_THREADS];
+pthread_mutex_t testRunnerMutex_;
 
-void StringInit(String* string, const char* cstring)
+// Thread local globals to allow accessing current test and fail a test from Assert
+__thread TestInfo* currentTest_;
+__thread jmp_buf testFailedJumpBuffer_;
+__thread jmp_buf assertJumpBuffer_;
+
+static void StringInit(String* string, const char* cstring)
 {
     string->capacity = (strlen(cstring) + 1) * 2;
     string->data = malloc(string->capacity);
@@ -49,13 +45,13 @@ void StringInit(String* string, const char* cstring)
     strcpy(string->data, cstring);
 }
 
-void StringDeinit(String* string)
+static void StringDeinit(String* string)
 {
     free(string->data);
     string->capacity = 0;
 }
 
-void StringConcat(String* string, const char* format, ...)
+static void StringConcat(String* string, const char* format, ...)
 {
     va_list args;
 
@@ -129,7 +125,24 @@ static void WriteJUnitReport(void)
     StringDeinit(&junit);
 }
 
-void TestAssert(bool condition, const char* testMacro, const char* file, i32 line, TestInfo* testInfo) 
+static void AssertHandler(const char* message, const char* file, i32 line)
+{
+    if (currentTest_->expectAssert) {
+        longjmp(assertJumpBuffer_, 1);
+    }
+    else {
+        fprintf(stderr, 
+                "%sUnexpected assert thrown in test! %s:%d\n\"%s\"%s\n", 
+                ANSI_COLOR_RED, 
+                file, 
+                line, 
+                message,
+                ANSI_COLOR_RESET);
+        longjmp(testFailedJumpBuffer_, 1);
+    }
+}
+
+void TestCheck(bool condition, const char* testMacro, const char* file, i32 line, TestInfo* testInfo) 
 {
     if (condition) {
         testInfo->numChecksPassed++;
@@ -139,51 +152,46 @@ void TestAssert(bool condition, const char* testMacro, const char* file, i32 lin
     testInfo->failureInfo.message = testMacro;
     testInfo->failureInfo.file = file;
     testInfo->failureInfo.line = line;
-    longjmp(jumpBuffer_, 1);
+    longjmp(testFailedJumpBuffer_, 1);
 }
 
 void* TestRunner(void* args)
 {
-    (void)args;
-    
     for (;;) {
-        pthread_mutex_lock(&mutex_);
+        pthread_mutex_lock(&testRunnerMutex_);
 
         if (currentTestNum_ >= numSuites_) {
-            pthread_mutex_unlock(&mutex_);
+            pthread_mutex_unlock(&testRunnerMutex_);
             break;
         }
 
         TestSuite* suite = &testSuites_[currentTestNum_];
         currentTestNum_++;
-        pthread_mutex_unlock(&mutex_);
+        pthread_mutex_unlock(&testRunnerMutex_);
 
         u64 suiteStartTime = GetTimeMs();
         suite->Setup(suite);
 
         for (u16 j = 0; j < suite->numTests; j++) {
-            TestInfo* test = &suite->testInfo[j];
             u64 testStartTime;
-            printf("%s %s, %d\n", suite->name, test->name, suite->numTests);
-            suite->Bringup(test);
+            currentTest_ = &suite->testInfo[j];
+            suite->Bringup(currentTest_);
 
-            if (setjmp(jumpBuffer_)) {
+            if (setjmp(testFailedJumpBuffer_)) {
                 // Test failed
-                test->duration = GetTimeMs() - testStartTime;
-                test->passed = false;
+                currentTest_->duration = GetTimeMs() - testStartTime;
+                currentTest_->passed = false;
                 suite->numFailed++;
             }
             else {
                 // Test passed
                 testStartTime = GetTimeMs();
-                test->RunTest(test);            
-                test->duration = GetTimeMs() - testStartTime;
-                test->passed = true;
+                currentTest_->RunTest(currentTest_);
+                currentTest_->duration = GetTimeMs() - testStartTime;
+                currentTest_->passed = true;
             }
-            
             suite->Teardown();
         }
-
         suite->duration = GetTimeMs() - suiteStartTime;
     }
 
@@ -192,7 +200,8 @@ void* TestRunner(void* args)
 
 i32 RunAllTests()
 {
-    pthread_mutex_init(&mutex_, NULL);
+    RegisterAssertHandler(AssertHandler);
+    pthread_mutex_init(&testRunnerMutex_, NULL);
 
     for (u8 i = 0; i < NUM_THREADS; i++) {
         pthread_t threadId;
@@ -244,7 +253,7 @@ i32 RunAllTests()
     }
 
     WriteJUnitReport();
-    pthread_mutex_destroy(&mutex_);
+    pthread_mutex_destroy(&testRunnerMutex_);
 
     return totalFailed > 0 ? 1 : 0;
 }

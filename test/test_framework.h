@@ -3,15 +3,19 @@
 #include <types.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <setjmp.h>
+#include <pthread.h>
 
 #define MAX_TESTS_PER_SUITE 128
 #define MAX_SUITES 64
+#define NUM_THREADS 4
 
 typedef struct TestInfo {
     const char* name;
     u64 numChecksPassed;
     u32 duration;
     bool passed;
+    bool expectAssert;
     struct {
         i32 line;
         const char* file;
@@ -28,11 +32,13 @@ typedef struct TestSuite{
     TestInfo testInfo[MAX_TESTS_PER_SUITE];
     void (*Setup)(struct TestSuite*);
     void (*Bringup)(struct TestInfo*);
-    void (*Teardown)(void);
+void (*Teardown)(void);
 } TestSuite;
 
 extern TestSuite testSuites_[MAX_SUITES];
 extern u16 numSuites_;
+extern __thread jmp_buf testFailedJumpBuffer_;
+extern __thread jmp_buf assertJumpBuffer_;
 
 #define STRINGIFY(x) #x
 #define TO_STRING(x) STRINGIFY(x)
@@ -56,13 +62,28 @@ extern u16 numSuites_;
                                                                           .Bringup = _TEST_BRINGUP_FUNC(suiteName), \
                                                                           .Teardown = _TEST_TEARDOWN_FUNC(suiteName) }
 
-#define ADD_TEST(testSuite, testName) do { __testSuite->testInfo[__testSuite->numTests++] = (TestInfo) { .name = #testName,\
+#define ADD_TEST(testSuite, testName) __testSuite->testInfo[__testSuite->numTests++] = (TestInfo) { .name = #testName,\
                                                                                                     .numChecksPassed = 0, \
-                                                                                                    .RunTest = _TEST_BODY_FUNC(testSuite, testName) }; } while(0)
+                                                                                                    .expectAssert = false,\
+                                                                                                    .RunTest = _TEST_BODY_FUNC(testSuite, testName) };
 
-#define ASSERT_TRUE(cond) do { TestAssert(cond, "ASSERT_TRUE(" TO_STRING(cond) ")", __FILE__, __LINE__, __testInfo); } while(0)
+#define CHECK_DEATH(function)\
+{\
+    __testInfo->expectAssert = true;\
+    if (setjmp(assertJumpBuffer_) == 0) {\
+        (function);\
+        __testInfo->expectAssert = false;\
+        TestCheck(false, "CHECK_DEATH(" TO_STRING(function) ")", __FILE__, __LINE__, __testInfo);\
+    }\
+    else {\
+        __testInfo->numChecksPassed++;\
+        __testInfo->expectAssert = false;\
+    }\
+}
 
-void TestAssert(bool condition, const char* message, const char* file, i32 line, TestInfo* testResult);
+#define CHECK_TRUE(cond) TestCheck(cond, "CHECK_TRUE(" TO_STRING(cond) ")", __FILE__, __LINE__, __testInfo);
+
+void TestCheck(bool condition, const char* message, const char* file, i32 line, TestInfo* testResult);
 
 i32 RunAllTests();
 

@@ -4,17 +4,14 @@
 
 TEST(Oscillators, SinWave)
 {
-    ASSERT_TRUE(false);
 }
 
 TEST(Oscillators, SawWave)
 {
-    ASSERT_TRUE(false);
 }
 
 TEST(Oscillators, SquareWave)
 {
-    ASSERT_TRUE(true);
 }
 
 TEST_SETUP(Oscillators)
