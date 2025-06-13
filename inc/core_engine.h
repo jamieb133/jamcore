@@ -17,6 +17,7 @@
 #define DEFAULT_HEAP_ARENA_SIZE_KB 30000
 
 #define BUFFER_SIZE 1024 // TODO: make configurable
+#define SAMPLE_RATE_DEFAULT 48000
 
 enum  {
     ENGINE_INITIALIZED,
@@ -28,7 +29,7 @@ enum  {
 };
 
 typedef void (*JamProcessFunc)(f64 sampleRate, u16 numFrames, f32* buffer, void* data); 
-typedef void (*JamDestroyFunc)(void); 
+typedef void (*JamDestroyFunc)(void* data); 
 
 typedef struct {
     u16 inputRoutingMask, outputRoutingMask;
@@ -54,7 +55,7 @@ typedef struct {
     ScratchAllocator scratchAllocator;
 
     // Channels
-    u16 processorMask;
+    u64 processorMask;
     u16 sourceNode;
     JamAudioProcessor processors[MAX_PROCESSORS];
 

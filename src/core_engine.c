@@ -188,7 +188,7 @@ void CoreEngine_Deinit(CoreEngineContext* ctx)
         if (ctx->processorMask & (1 << i)) {
             JamAudioProcessor* proc = &ctx->processors[i];
             if (proc->Destroy) {
-                proc->Destroy();
+                proc->Destroy(proc->procData);
             }
             numProcessors--;
         }
@@ -228,7 +228,7 @@ void CoreEngine_Start(CoreEngineContext* ctx)
 
     // Setup single interleaved stereo stream
     AudioStreamBasicDescription streamFormat = (AudioStreamBasicDescription) {
-        .mSampleRate = 48000,
+        .mSampleRate = SAMPLE_RATE_DEFAULT, // TODO: make configurable
         .mFormatID = kAudioFormatLinearPCM,
         .mFormatFlags = kAudioFormatFlagIsFloat,
         .mBytesPerFrame = sizeof(Float32) * 2,
@@ -286,7 +286,6 @@ void CoreEngine_Start(CoreEngineContext* ctx)
     instance_ = ctx;
 
     Assert(sigaction(SIGINT, &sa, NULL) != -1, "Failed to register SIGINT handler");
-
     SetFlag(ctx, ENGINE_STARTED);
 }
 
@@ -319,6 +318,7 @@ void CoreEngine_Stop(CoreEngineContext* ctx)
 void CoreEngine_SetSource(CoreEngineContext* ctx, u16 id)
 {
     Assert(ctx, "Context is null");
+    Assert(IsFlagSet(ctx, ENGINE_INITIALIZED), "Engine not initialised");
     Assert(id < MAX_PROCESSORS, "Invalid processor id");
     ctx->sourceNode = id;
 }
@@ -326,13 +326,12 @@ void CoreEngine_SetSource(CoreEngineContext* ctx, u16 id)
 u16 CoreEngine_CreateProcessor(CoreEngineContext* ctx, JamProcessFunc procFunc, JamDestroyFunc destFunc, void* data)
 {
     Assert(ctx, "Context is null");
+    Assert(IsFlagSet(ctx, ENGINE_INITIALIZED), "Engine not initialised");
     // TODO assert capacity
     
     // Find free slot, the first trailing zero in the mask
     UInt16 freeSlot = (ctx->processorMask == 0) ? 0 : __builtin_ctz((unsigned int)~ctx->processorMask);
     ctx->processorMask |= (1 << freeSlot);
-
-    LogInfo("Found free slot %d for new processor", freeSlot);
 
     JamAudioProcessor* processor = &ctx->processors[freeSlot];
     processor->inputRoutingMask = 0;

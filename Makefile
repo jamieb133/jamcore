@@ -36,7 +36,7 @@ TARGET_EXE = $(BUILD_DIR)/$(PROJECT_NAME)_example
 
 # TODO: split framework into library to create multiple test exes (e.g. system tests)
 TEST_EXE = $(TEST_BUILD_DIR)/$(PROJECT_NAME)_test
-TEST_CFLAGS = -Itest/framework
+TEST_CFLAGS = -Itest/framework -Wno-unused-parameter
 
 .PHONY: all clean dirs
 

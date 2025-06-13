@@ -9,6 +9,6 @@ int main()
     ADD_TEST_SUITE(CoreEngine);
     //ADD_TEST_SUITE(Oscillators);
 
-    return RunAllTests(LOG_ERROR);
+    return RunAllTests(LOG_INFO);
 }
 

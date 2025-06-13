@@ -1,5 +1,7 @@
 #include "test_framework.h"
+#include "fake_processor.h"
 #include <core_engine.h>
+#include <os/workgroup.h>
 
 static inline bool IsFlagSet(CoreEngineContext* ctx, u8 flag)
 {
@@ -66,7 +68,6 @@ TEST(CoreEngine, Stop)
     CoreEngine_Start(&ctx);
     CHECK_DEATH(CoreEngine_Deinit(&ctx));
 
-
     CoreEngine_Stop(&ctx);
 
     CHECK_TRUE(IsFlagSet(&ctx, ENGINE_INITIALIZED));
@@ -77,9 +78,56 @@ TEST(CoreEngine, Stop)
     CoreEngine_Deinit(&ctx);
 }
 
+TEST(CoreEngine, CreateProcessors)
+{
+    CoreEngineContext ctx;
+    FakeProcessor proc[100];
+    
+    CHECK_DEATH(CoreEngine_CreateProcessor(NULL, NULL, NULL, NULL));
+    CHECK_DEATH(FakeProcessor_Create(&proc[0], &ctx, BUFFER_SIZE));
+
+    CoreEngine_Init(&ctx, 1.0f, 4096);
+    for (u16 i = 0; i < 100; i++) {
+        FakeProcessor_Create(&proc[i], &ctx, BUFFER_SIZE);
+    }
+
+    CoreEngine_Deinit(&ctx);
+}
+
+TEST(CoreEngine, ProcessAudio)
+{
+    CoreEngineContext ctx;
+    FakeProcessor proc;
+    u16 id;
+    f32 silentBuffer[BUFFER_SIZE] = { 0, };
+
+    CHECK_DEATH(CoreEngine_SetSource(NULL, 0));
+    CHECK_DEATH(CoreEngine_SetSource(&ctx, 0));
+
+    CoreEngine_Init(&ctx, 1.0f, 4096);
+    CHECK_DEATH(CoreEngine_SetSource(&ctx, MAX_PROCESSORS));
+
+    id = FakeProcessor_Create(&proc, &ctx, BUFFER_SIZE);
+    CoreEngine_SetSource(&ctx, id);
+    CoreEngine_Start(&ctx);
+
+    if (!FakeProcessor_WaitForData(&proc)) {
+        CoreEngine_Stop(&ctx);
+        CoreEngine_Deinit(&ctx);
+        CHECK_TRUE(false);
+    }
+
+    CHECK_TRUE(proc.numFrames == (BUFFER_SIZE / 2));
+    CHECK_TRUE(proc.sampleRate == SAMPLE_RATE_DEFAULT);
+    CHECK_TRUE(memcmp(proc.buffer, silentBuffer, proc.numFrames * 2) == 0);
+
+    CoreEngine_Stop(&ctx);
+    CoreEngine_Deinit(&ctx);
+}
+
 TEST(CoreEngine, Routing)
 {
-
+    // TODO
 }
 
 TEST_SETUP(CoreEngine)
@@ -88,11 +136,13 @@ TEST_SETUP(CoreEngine)
     ADD_TEST(CoreEngine, Deinit);
     ADD_TEST(CoreEngine, Start);
     ADD_TEST(CoreEngine, Stop);
+    ADD_TEST(CoreEngine, CreateProcessors);
+    ADD_TEST(CoreEngine, ProcessAudio);
 }
 
 TEST_BRINGUP(CoreEngine)
 {
-    printf("%s\n", __testInfo->name);
+
 }
 
 TEST_TEARDOWN(CoreEngine)

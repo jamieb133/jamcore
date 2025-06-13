@@ -26,6 +26,7 @@ static void ProcessCallback(f64 sampleRate, u16 numFrames, f32* buffer, void* da
 
 u16 Fader_Create(Fader* fader, f32 defaultPan, f32 defaultVol, CoreEngineContext* ctx)
 {
+    LogInfo("Creating Fader: pan = %f, vol = %f", defaultPan, defaultVol);
     Assert(fader, "Fader is null");
     fader->pan = defaultPan;
     fader->vol = defaultVol;
