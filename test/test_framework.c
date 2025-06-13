@@ -131,27 +131,23 @@ static void AssertHandler(const char* message, const char* file, i32 line)
         longjmp(assertJumpBuffer_, 1);
     }
     else {
-        fprintf(stderr, 
-                "%sUnexpected assert thrown in test! %s:%d\n\"%s\"%s\n", 
-                ANSI_COLOR_RED, 
-                file, 
-                line, 
-                message,
-                ANSI_COLOR_RESET);
-        longjmp(testFailedJumpBuffer_, 1);
+        // Unexpected assert, fail test now
+        TestCheck(false, message, file, line, currentTest_);
     }
 }
 
-void TestCheck(bool condition, const char* testMacro, const char* file, i32 line, TestInfo* testInfo) 
+void TestCheck(bool condition, const char* msg, const char* file, i32 line, TestInfo* testInfo) 
 {
     if (condition) {
         testInfo->numChecksPassed++;
         return;
     }
 
-    testInfo->failureInfo.message = testMacro;
     testInfo->failureInfo.file = file;
     testInfo->failureInfo.line = line;
+    testInfo->failureInfo.message = malloc(strlen(msg) + 1);
+    memset(testInfo->failureInfo.message, 0, strlen(msg) + 1);
+    strcpy(testInfo->failureInfo.message, msg);
     longjmp(testFailedJumpBuffer_, 1);
 }
 
@@ -198,9 +194,11 @@ void* TestRunner(void* args)
     return NULL;
 }
 
-i32 RunAllTests()
+i32 RunAllTests(LogLevel logLevel)
 {
     RegisterAssertHandler(AssertHandler);
+    SetLogLevel(logLevel);
+
     pthread_mutex_init(&testRunnerMutex_, NULL);
 
     for (u8 i = 0; i < NUM_THREADS; i++) {
@@ -231,19 +229,19 @@ i32 RunAllTests()
             if (suite->numFailed == 0) {
                 continue;
             }
-            printf("%s > %s (%d):%s\n", ANSI_COLOR_YELLOW, suite->name, suite->numFailed, ANSI_COLOR_RESET);
+            printf("  > %s (%d):\n", suite->name, suite->numFailed);
             for (u16 j = 0; j < suite->numTests; j++) {
                 TestInfo* test = &suite->testInfo[j];
                 if (test->passed) {
                     continue;
                 }
                 
-                printf("%s   -- %s (%s:%d)%s\n", 
-                        ANSI_COLOR_YELLOW, 
+                printf("     -- %s (%s:%d)\n", 
                         test->name, 
                         test->failureInfo.file, 
-                        test->failureInfo.line, 
-                        ANSI_COLOR_RESET);
+                        test->failureInfo.line);
+                printf("        %s%s%s\n", ANSI_COLOR_YELLOW, test->failureInfo.message, ANSI_COLOR_RESET);
+                free(test->failureInfo.message);
             }
         }
     }

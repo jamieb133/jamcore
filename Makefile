@@ -3,7 +3,7 @@ PROJECT_NAME = jamcore
 CC = clang
 AR = ar
 
-CFLAGS = -Wall -Wextra -g -Iinc
+CFLAGS = -Wall -Wextra -g -Iinc -O0
 LDFLAGS = -framework AudioToolbox -framework CoreFoundation -framework CoreAudio -lm
 
 ifeq ($(SAN),asan) 

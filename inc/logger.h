@@ -15,6 +15,7 @@ typedef enum {
     LOG_INFO,
     LOG_WARNING,
     LOG_ERROR,
+    LOG_SUPPRESSED,
 
     LOG_NUM_LEVELS,
 } LogLevel;
@@ -25,7 +26,7 @@ typedef enum {
     static bool __init = false;\
     if (!__init) {\
         __init = true;\
-        _LogMessage(level, format, ##__VA_ARGS__);\
+        _LogMessage(level, __FILE__, __LINE__, format, ##__VA_ARGS__);\
     }\
 }
 
@@ -35,15 +36,15 @@ long long GetTimeMs();
     static long long next = 0;\
     long long current = GetTimeMs();\
     if (current >= next) {\
-        _LogMessage(level, format, ##__VA_ARGS__);\
+        _LogMessage(level, __FILE__, __LINE__, format, ##__VA_ARGS__);\
         next = current + periodMs;\
     }\
 }
 
 
-#define LogInfo(format, ...) _LogMessage(LOG_INFO, format, ##__VA_ARGS__)
-#define LogWarn(format, ...) _LogMessage(LOG_WARNING, format, ##__VA_ARGS__)
-#define LogError(format, ...) _LogMessage(LOG_ERROR, format, ##__VA_ARGS__)
+#define LogInfo(format, ...) _LogMessage(LOG_INFO, __FILE__, __LINE__, format, ##__VA_ARGS__)
+#define LogWarn(format, ...) _LogMessage(LOG_WARNING, __FILE__, __LINE__, format, ##__VA_ARGS__)
+#define LogError(format, ...) _LogMessage(LOG_ERROR, __FILE__, __LINE__, format, ##__VA_ARGS__)
 
 #define LogInfoOnce(format, ...) LogOnce(LOG_INFO, format, ##__VA_ARGS__)
 #define LogWarnOnce(format, ...) LogOnce(LOG_WARNING, format, ##__VA_ARGS__)
@@ -61,7 +62,7 @@ long long GetTimeMs();
 
 void _Assert(bool condition, const char* condString, const char* file, i32 line, const char* format, ...);
 void _LogRaw(LogLevel level, const char* format, ...);
-void _LogMessage(LogLevel level, const char* format, ...);
+void _LogMessage(LogLevel level, const char* file, i32 line, const char* format, ...);
 
 void RegisterAssertHandler(void (*handler)(char const*, const char*, i32));
-
+void SetLogLevel(LogLevel level);

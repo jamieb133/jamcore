@@ -18,14 +18,14 @@
 
 #define BUFFER_SIZE 1024 // TODO: make configurable
 
-#define CHANNEL_SOLO (1 << 0)
-#define CHANNEL_MONO (1 << 1)
+enum  {
+    ENGINE_INITIALIZED,
+    ENGINE_STARTED,
+    ENGINE_STOP_REQUESTED,
+    ENGINE_AUDIO_THREAD_SILENCED,
 
-#define ENGINE_STOP_REQUESTED (1 << 0)
-#define ENGINE_AUDIO_THREAD_SILENCED (1 << 1)
-#define ENGINE_STOPPED (1 << 2)
-#define ENGINE_DEINITIALIZED (1 << 3)
-
+    NUM_ENGINE_FLAGS,
+};
 
 typedef void (*JamProcessFunc)(f64 sampleRate, u16 numFrames, f32* buffer, void* data); 
 typedef void (*JamDestroyFunc)(void); 
@@ -64,6 +64,7 @@ typedef struct {
 
 // Core Engine Functions
 void CoreEngine_Init(CoreEngineContext* ctx, f32 masterVolumeScale, u64 heapArenaSizeKb);
+void CoreEngine_Deinit(CoreEngineContext* ctx);
 void CoreEngine_Start(CoreEngineContext* ctx);
 void CoreEngine_Stop(CoreEngineContext* ctx);
 void CoreEngine_SetSource(CoreEngineContext* ctx, u16 id);

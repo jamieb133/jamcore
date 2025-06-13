@@ -5,6 +5,7 @@
 #include <logger.h>
 #include <allocator.h>
 #include <oscillators.h>
+#include <string.h>
 
 static const char* waveformStrings_[WAVEFORM_COUNT] = {
     "WAVEFORM_SIN",
@@ -14,8 +15,6 @@ static const char* waveformStrings_[WAVEFORM_COUNT] = {
 
 static void ProcessCallback(f64 sampleRate, u16 numFrames, f32* buffer, void* data)
 {
-    LogInfoOnce("frames: %d sampleRate: %f", numFrames, sampleRate);
-
     Oscillator* osc = (Oscillator*)data;
     Assert(osc, "Oscillator is null");
 

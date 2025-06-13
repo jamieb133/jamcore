@@ -1,3 +1,4 @@
+#include "logger.h"
 #include "test_framework.h"
 
 INCLUDE_TEST_SUITE(CoreEngine)
@@ -8,6 +9,6 @@ int main()
     ADD_TEST_SUITE(CoreEngine);
     //ADD_TEST_SUITE(Oscillators);
 
-    return RunAllTests();
+    return RunAllTests(LOG_ERROR);
 }
 

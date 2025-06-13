@@ -6,6 +6,8 @@
 #include <setjmp.h>
 #include <pthread.h>
 
+#include <logger.h>
+
 #define MAX_TESTS_PER_SUITE 128
 #define MAX_SUITES 64
 #define NUM_THREADS 4
@@ -19,7 +21,7 @@ typedef struct TestInfo {
     struct {
         i32 line;
         const char* file;
-        const char* message;
+        char* message;
     } failureInfo;
     void (*RunTest)(struct TestInfo*);
 } TestInfo;
@@ -65,6 +67,7 @@ extern __thread jmp_buf assertJumpBuffer_;
 #define ADD_TEST(testSuite, testName) __testSuite->testInfo[__testSuite->numTests++] = (TestInfo) { .name = #testName,\
                                                                                                     .numChecksPassed = 0, \
                                                                                                     .expectAssert = false,\
+                                                                                                    .failureInfo.message = NULL,\
                                                                                                     .RunTest = _TEST_BODY_FUNC(testSuite, testName) };
 
 #define CHECK_DEATH(function)\
@@ -85,5 +88,5 @@ extern __thread jmp_buf assertJumpBuffer_;
 
 void TestCheck(bool condition, const char* message, const char* file, i32 line, TestInfo* testResult);
 
-i32 RunAllTests();
+i32 RunAllTests(LogLevel logLevel);
 

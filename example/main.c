@@ -62,9 +62,12 @@ int main()
         // Sweep across
         remaining = windowMs;
         f32 scale = (2.0f / (f32)windowMs);
+        f32 pitchScale = (440.0f / (f32) windowMs);
         while (remaining--) {
             sinFader.pan -= scale; 
             sqFader.pan += scale; 
+            sinOsc.frequency += pitchScale;
+            sqOsc.frequency -= pitchScale;
             usleep(1000);
         }
     }
@@ -72,9 +75,12 @@ int main()
     { // Sweep back
         remaining = windowMs;
         f32 scale = (2.0f / (f32)windowMs);
+        f32 pitchScale = (440.0f / (f32) windowMs);
         while (remaining--) {
             sinFader.pan += scale; 
             sqFader.pan -= scale; 
+            sinOsc.frequency -= pitchScale;
+            sqOsc.frequency += pitchScale;
             usleep(1000);
         }
     }

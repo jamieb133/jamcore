@@ -17,7 +17,7 @@ static void HandleSigInt(int sig)
 {
     LogWarnRaw("\n");
     LogWarn("Caught SIGINT %d, exiting...", sig);
-    CoreEngine_GlobalPanic();
+    Assert(false, "Triggering panic");
 }
 
 static void AssertHandler(const char* message, const char* file, i32 line)
@@ -26,7 +26,29 @@ static void AssertHandler(const char* message, const char* file, i32 line)
     CoreEngine_GlobalPanic();
 }
 
-static void Traverse(JamAudioProcessor* processors, u16 processorId, f64 sampleRate, u16 numFrames, f32* inputBuffer, f32* outputBuffer, u8 stackDepth, ScratchAllocator* alloc)
+static inline void SetFlag(CoreEngineContext* ctx, u8 flag)
+{
+    ctx->flags |= (1 << flag);
+}
+
+static inline void UnsetFlag(CoreEngineContext* ctx, u8 flag)
+{
+    ctx->flags &= ~(1 << flag);
+}
+
+static inline bool IsFlagSet(CoreEngineContext* ctx, u8 flag)
+{
+    return ctx->flags & (1 << flag);
+}
+
+static void Traverse(JamAudioProcessor* processors, 
+                        u16 processorId, 
+                        f64 sampleRate, 
+                        u16 numFrames, 
+                        f32* inputBuffer, 
+                        f32* outputBuffer, 
+                        u8 stackDepth, 
+                        ScratchAllocator* alloc)
 {
     Assert(stackDepth < 128, "Stack depth limit exceeded");
 
@@ -41,21 +63,13 @@ static void Traverse(JamAudioProcessor* processors, u16 processorId, f64 sampleR
     }
 
     // Traverse any children
-    u16 remainingNodes = Bitcount(processor->outputRoutingMask);
-
-    for (u16 nextId = 0; nextId < MAX_PROCESSORS; nextId++) {
-        if (remainingNodes == 0) {
-            break;
-        }
-        if ((processor->outputRoutingMask & (1 << nextId)) == 0) {
-            continue;
-        }
-
+    u16 currentMask = processor->outputRoutingMask;
+    while (currentMask != 0) {
+        u16 nextId = CountTrailingZeros(currentMask);
+        currentMask &= ~(1 << nextId); 
         f32* nextBuffer = ScratchAllocator_Alloc(alloc, BUFFER_SIZE * sizeof(f32));
         memcpy(nextBuffer, inputBuffer, BUFFER_SIZE * sizeof(f32));
-
         Traverse(processors, nextId, sampleRate, numFrames, nextBuffer, outputBuffer, stackDepth + 1, alloc);
-        remainingNodes--;
     }
 }
 
@@ -78,7 +92,7 @@ static OSStatus AudioRenderCallback(void* args,
     // ========================================================================
     // Bail out immediatelly after zeroing buffer if engine has stopped
     // ========================================================================
-    
+
     for (UInt32 i = 0; i < ioData->mNumberBuffers; i++) {
         AudioBuffer* buffer = &ioData->mBuffers[i];
         memset(buffer->mData, 0, buffer->mDataByteSize);
@@ -87,7 +101,7 @@ static OSStatus AudioRenderCallback(void* args,
     Assert(numFrames <= BUFFER_SIZE, "Number of frames exceeds buffer capacity");
 
     // Note: this must come after the buffers are zeroed out above to prevent horrible glitching!
-    if (ctx->flags & ENGINE_STOPPED) {
+    if (!IsFlagSet(ctx, ENGINE_STARTED)) {
         return noErr;
     }
 
@@ -95,12 +109,12 @@ static OSStatus AudioRenderCallback(void* args,
     // If fading out then adjust the master volume accordingly
     // ========================================================================
 
-    if (ctx->flags & ENGINE_STOP_REQUESTED) {
+    if (IsFlagSet(ctx, ENGINE_STOP_REQUESTED)) {
         // TODO: actually fade out based on time
         ctx->masterVolumeScale = 0.0;
         
         // Signal the main thread to continue
-        ctx->flags |= ENGINE_AUDIO_THREAD_SILENCED;
+        SetFlag(ctx, ENGINE_AUDIO_THREAD_SILENCED);
         Assert(pthread_cond_signal(&ctx->cond) == 0, "Failed to signal condition variable");
 
         return noErr;
@@ -139,8 +153,9 @@ void CoreEngine_Init(CoreEngineContext *ctx, float masterVolumeScale, u64 heapAr
 {
     RegisterAssertHandler(AssertHandler);
 
+    Assert(ctx, "Context is null");
+    Assert(heapArenaSizeKb > 0, "Provided heap size must be greater than zero");
     Assert(instance_ == NULL, "Error, already existing instance of engine");
-    instance_ = ctx;
 
     ctx->heapArena = malloc(heapArenaSizeKb * 1024); 
     Assert(ctx->heapArena, "Failed to allocate %d kilobytes for heap arena");
@@ -156,12 +171,42 @@ void CoreEngine_Init(CoreEngineContext *ctx, float masterVolumeScale, u64 heapAr
     ctx->masterVolumeScale = masterVolumeScale;
     ctx->processorMask = 0;
     ctx->sampleRate = 0;
+
+    instance_ = ctx;
+    SetFlag(ctx, ENGINE_INITIALIZED);
+}
+
+void CoreEngine_Deinit(CoreEngineContext* ctx)
+{
+    Assert(IsFlagSet(ctx, ENGINE_INITIALIZED), "Engine not intialised");
+    Assert(!IsFlagSet(ctx, ENGINE_STARTED), "Engine is running on deinit, must stop it first");
+
+    UInt16 numProcessors = Bitcount(ctx->processorMask);
+    for (UInt16 i = 0; i < MAX_PROCESSORS; i++) {
+        if (numProcessors == 0)
+            break;
+        if (ctx->processorMask & (1 << i)) {
+            JamAudioProcessor* proc = &ctx->processors[i];
+            if (proc->Destroy) {
+                proc->Destroy();
+            }
+            numProcessors--;
+        }
+    }
+
+    Assert(pthread_mutex_destroy(&ctx->mutex) == 0, "Failed to destroy mutex");
+    Assert(pthread_cond_destroy(&ctx->cond) == 0, "Failed to destroy condition variable");
+
+    ctx->flags = 0;
+    ScratchAllocator_Release(&ctx->scratchAllocator);
+    instance_ = NULL;
 }
 
 void CoreEngine_Start(CoreEngineContext* ctx)
 {
     OSStatus status;
-
+   
+    Assert(instance_, "Instance is null, may not have been initialised");
     LogInfo("Initializing CoreAudio");
 
     AudioComponentDescription defaultOutputDesc = (AudioComponentDescription) {
@@ -241,12 +286,17 @@ void CoreEngine_Start(CoreEngineContext* ctx)
     instance_ = ctx;
 
     Assert(sigaction(SIGINT, &sa, NULL) != -1, "Failed to register SIGINT handler");
+
+    SetFlag(ctx, ENGINE_STARTED);
 }
 
 void CoreEngine_Stop(CoreEngineContext* ctx)
 {
+    Assert(IsFlagSet(ctx, ENGINE_INITIALIZED), "Engine not initialised");
+    Assert(IsFlagSet(ctx, ENGINE_STARTED), "Engine not started");
+
     OSStatus status;
-    ctx->flags |= ENGINE_STOP_REQUESTED;
+    SetFlag(ctx, ENGINE_STOP_REQUESTED);
 
     LogInfo("Deinitializing CoreAudio");
 
@@ -254,7 +304,7 @@ void CoreEngine_Stop(CoreEngineContext* ctx)
     Assert(pthread_mutex_lock(&ctx->mutex) == 0, "Failed to lock mutex");
     Assert(pthread_cond_wait(&ctx->cond, &ctx->mutex) == 0, "Failed to wait for condition variable");
     Assert(pthread_mutex_unlock(&ctx->mutex) == 0, "Failed to unlock mutex");
-    ctx->flags |= ENGINE_STOPPED;
+    UnsetFlag(ctx, ENGINE_STARTED);
 
     status = AudioOutputUnitStop(ctx->caUnit);
     Assert(status == noErr, "Failed to stop audio unit. Status: %d", status);
@@ -264,26 +314,6 @@ void CoreEngine_Stop(CoreEngineContext* ctx)
 
     status = AudioComponentInstanceDispose(ctx->caUnit);
     Assert(status == noErr, "Failed to dispose audio unit. Status: %d", status);
-
-    UInt16 numProcessors = Bitcount(ctx->processorMask);
-    for (UInt16 i = 0; i < MAX_PROCESSORS; i++) {
-        if (numProcessors == 0)
-            break;
-        if (ctx->processorMask & (1 << i)) {
-            JamAudioProcessor* proc = &ctx->processors[i];
-            if (proc->Destroy) {
-                proc->Destroy();
-            }
-            numProcessors--;
-        }
-    }
-
-    Assert(pthread_mutex_destroy(&ctx->mutex) == 0, "Failed to destroy mutex");
-    Assert(pthread_cond_destroy(&ctx->cond) == 0, "Failed to destroy condition variable");
-
-    ctx->flags |= ENGINE_DEINITIALIZED;
-
-    ScratchAllocator_Release(&ctx->scratchAllocator);
 }
 
 void CoreEngine_SetSource(CoreEngineContext* ctx, u16 id)
@@ -346,16 +376,17 @@ void CoreEngine_Route(CoreEngineContext *ctx, u16 srcId, u16 dstId, bool shouldR
 
 void CoreEngine_Panic(CoreEngineContext* ctx)
 {   
+    static u8 numPanics = 0;
+    LogError("CoreEngine Panic %d", numPanics);
+
     instance_ = NULL;
 
     if (ctx == NULL) {
         exit(0);
     }
 
-    LogError("CoreEngine Panic");
-
     // Prevent recursion in case CoreEngine_Stop fails, in such case we have no option but to hard kill
-    if (ctx->flags & (1 << ENGINE_STOP_REQUESTED)) {
+    if (IsFlagSet(ctx, ENGINE_STOP_REQUESTED)) {
         LogWarn("CoreEngine error occurred while trying to stop after previous panic");
         exit(1);
     }

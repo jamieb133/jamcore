@@ -3,7 +3,12 @@
 
 u16 Bitcount(u16 mask) 
 {
-    return (u16)__builtin_popcount((i32)mask);
+    return (u16)__builtin_popcount((u32)mask);
+}
+
+u16 CountTrailingZeros(u16 mask)
+{
+    return (u16)__builtin_ctz((u32)mask);
 }
 
 void BufferSum(f32* buffer, f32 value, u16 size)

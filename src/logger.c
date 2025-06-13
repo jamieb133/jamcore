@@ -23,7 +23,7 @@ static const char* colors_[LOG_NUM_LEVELS] = {
 static void DefaultAssertHandler(const char* message, const char* file, i32 line);
 
 static LogLevel currentLevel_ = LOG_INFO;
-static void (*assertHandler_)(const char*, const char*, i32) = DefaultAssertHandler;
+static void (*assertHandler_)(const char*, const char*, i32) = NULL;
 
 static void DefaultAssertHandler(const char* message, const char* file, i32 line)
 {
@@ -33,7 +33,15 @@ static void DefaultAssertHandler(const char* message, const char* file, i32 line
 
 void RegisterAssertHandler(void (*handler)(const char *, const char *, i32))
 {
-    assertHandler_ = handler;
+    // Once set, cannot be reset
+    if (assertHandler_ == NULL) {
+        assertHandler_ = handler;
+    }
+}
+
+void SetLogLevel(LogLevel level)
+{
+    currentLevel_ = level;
 }
 
 long long GetTimeMs()
@@ -43,7 +51,7 @@ long long GetTimeMs()
     return (long long)tv.tv_sec * 1000 + (long long)tv.tv_usec / 1000;
 }
 
-void _LogMessage(LogLevel level, const char* format, ...)
+void _LogMessage(LogLevel level, const char* file, i32 line, const char* format, ...)
 {
     if (level < currentLevel_) {
         return;
@@ -68,7 +76,9 @@ void _LogMessage(LogLevel level, const char* format, ...)
     char formatBuf[256];
     va_list args;
     va_start(args, format);
-    sprintf(formatBuf, "%s[%s] [%s] -- %s%s\n", colors_[level], levels_[level], timeBuf, format, ANSI_COLOR_RESET);
+    sprintf(formatBuf, "[%s%s%s] [%s] -- %s%s%s (%s:%d)\n", 
+            colors_[level], levels_[level], ANSI_COLOR_RESET, 
+            timeBuf, colors_[level], format, ANSI_COLOR_RESET, file, line);
     vprintf(formatBuf, args);
     va_end(args);
 }
@@ -97,8 +107,13 @@ void _Assert(bool condition, const char* condString, const char* file, i32 line,
         va_start(args, format);
         vsprintf(outputBuf, formatBuf, args);
         va_end(args);
-
-        assertHandler_(outputBuf, file, line);
+        
+        if (assertHandler_) {
+            assertHandler_(outputBuf, file, line);
+        }
+        else {
+            DefaultAssertHandler(outputBuf, file, line);
+        }
     }
 }
 
