@@ -56,7 +56,7 @@ typedef struct {
 
     // Channels
     u64 processorMask;
-    u16 sourceNode;
+    u64 sourceMask;
     JamAudioProcessor processors[MAX_PROCESSORS];
 
     // CoreAudio audio unit
@@ -68,7 +68,7 @@ void CoreEngine_Init(CoreEngineContext* ctx, f32 masterVolumeScale, u64 heapAren
 void CoreEngine_Deinit(CoreEngineContext* ctx);
 void CoreEngine_Start(CoreEngineContext* ctx);
 void CoreEngine_Stop(CoreEngineContext* ctx);
-void CoreEngine_SetSource(CoreEngineContext* ctx, u16 id);
+void CoreEngine_AddSource(CoreEngineContext* ctx, u16 id);
 u16 CoreEngine_CreateProcessor(CoreEngineContext* ctx, JamProcessFunc procFunc, JamDestroyFunc destFunc, void* data);
 void CoreEngine_RemoveProcessor(CoreEngineContext* ctx, u16 id);
 void CoreEngine_Route(CoreEngineContext* ctx, u16 inputId, u16 outputId, bool shouldRoute);

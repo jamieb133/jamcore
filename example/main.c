@@ -17,7 +17,7 @@ int main()
     // Create a passthrough component that allows us to split the signal at the root
     // effectively enabling multiple input sources.
     u16 passthroughId = Passthrough_Create(&context);
-    CoreEngine_SetSource(&context, passthroughId);
+    CoreEngine_AddSource(&context, passthroughId);
 
     // Create sin osc
     Oscillator sinOsc;

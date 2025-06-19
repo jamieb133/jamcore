@@ -126,22 +126,27 @@ static OSStatus AudioRenderCallback(void* args,
     // Traverse the audio graph
     // ========================================================================
 
-    if ((ctx->processorMask & (1 << ctx->sourceNode)) == 0) {
-        return noErr;
-    }
-
     f32* inputBuffer = ScratchAllocator_Calloc(&ctx->scratchAllocator, BUFFER_SIZE * sizeof(f32));
+    u64 currentSourceMask = ctx->sourceMask; 
 
-    Traverse(
-        ctx->processors, 
-        ctx->sourceNode, 
-        ctx->sampleRate, 
-        numFrames, 
-        inputBuffer, 
-        masterBuffer->mData,
-        0, // Stack depth
-        &ctx->scratchAllocator
-    );
+    while (currentSourceMask != 0) {
+        u16 nextId = CountTrailingZeros(currentSourceMask);
+        currentSourceMask &= ~(1 << nextId);
+
+        // Only process the source's audio graph if it is enabled
+        if ((ctx->processorMask & (1 << nextId)) > 0) {
+            Traverse(
+                ctx->processors, 
+                nextId, 
+                ctx->sampleRate, 
+                numFrames, 
+                inputBuffer, 
+                masterBuffer->mData,
+                0, // Stack depth
+                &ctx->scratchAllocator
+            );
+        }
+    }
 
     BufferProduct(masterBuffer->mData, ctx->masterVolumeScale, BUFFER_SIZE);
     ScratchAllocator_Release(&ctx->scratchAllocator);
@@ -181,16 +186,13 @@ void CoreEngine_Deinit(CoreEngineContext* ctx)
     Assert(IsFlagSet(ctx, ENGINE_INITIALIZED), "Engine not intialised");
     Assert(!IsFlagSet(ctx, ENGINE_STARTED), "Engine is running on deinit, must stop it first");
 
-    UInt16 numProcessors = Bitcount(ctx->processorMask);
-    for (UInt16 i = 0; i < MAX_PROCESSORS; i++) {
-        if (numProcessors == 0)
-            break;
-        if (ctx->processorMask & (1 << i)) {
-            JamAudioProcessor* proc = &ctx->processors[i];
-            if (proc->Destroy) {
-                proc->Destroy(proc->procData);
-            }
-            numProcessors--;
+    u16 currentMask = ctx->processorMask;
+    while (currentMask != 0) {
+        u16 nextId = CountTrailingZeros(currentMask);
+        currentMask &= ~(1 << nextId);
+        JamAudioProcessor* proc = &ctx->processors[nextId];
+        if (proc->Destroy) {
+            proc->Destroy(proc->procData);
         }
     }
 
@@ -315,12 +317,12 @@ void CoreEngine_Stop(CoreEngineContext* ctx)
     Assert(status == noErr, "Failed to dispose audio unit. Status: %d", status);
 }
 
-void CoreEngine_SetSource(CoreEngineContext* ctx, u16 id)
+void CoreEngine_AddSource(CoreEngineContext* ctx, u16 id)
 {
     Assert(ctx, "Context is null");
     Assert(IsFlagSet(ctx, ENGINE_INITIALIZED), "Engine not initialised");
     Assert(id < MAX_PROCESSORS, "Invalid processor id");
-    ctx->sourceNode = id;
+    ctx->sourceMask |= (1 << id);
 }
 
 u16 CoreEngine_CreateProcessor(CoreEngineContext* ctx, JamProcessFunc procFunc, JamDestroyFunc destFunc, void* data)

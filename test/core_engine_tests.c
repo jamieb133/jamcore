@@ -101,14 +101,14 @@ TEST(CoreEngine, ProcessAudio)
     u16 id;
     f32 silentBuffer[BUFFER_SIZE] = { 0, };
 
-    CHECK_DEATH(CoreEngine_SetSource(NULL, 0));
-    CHECK_DEATH(CoreEngine_SetSource(&ctx, 0));
+    CHECK_DEATH(CoreEngine_AddSource(NULL, 0));
+    CHECK_DEATH(CoreEngine_AddSource(&ctx, 0));
 
     CoreEngine_Init(&ctx, 1.0f, 4096);
-    CHECK_DEATH(CoreEngine_SetSource(&ctx, MAX_PROCESSORS));
+    CHECK_DEATH(CoreEngine_AddSource(&ctx, MAX_PROCESSORS));
 
     id = FakeProcessor_Create(&proc, &ctx, BUFFER_SIZE);
-    CoreEngine_SetSource(&ctx, id);
+    CoreEngine_AddSource(&ctx, id);
     CoreEngine_Start(&ctx);
 
     if (!FakeProcessor_WaitForData(&proc)) {
