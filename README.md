@@ -12,6 +12,9 @@ make
 # Run the example
 make run
 
+# Run the tests
+make test
+
 # Debug the example with lldb
 make debug
 
