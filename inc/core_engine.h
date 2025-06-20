@@ -61,6 +61,7 @@ typedef struct {
 
     // CoreAudio audio unit
     AudioUnit caUnit;
+    AudioStreamBasicDescription streamFormat;
 } CoreEngineContext;
 
 // Core Engine Functions

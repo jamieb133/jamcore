@@ -229,7 +229,7 @@ void CoreEngine_Start(CoreEngineContext* ctx)
     Assert(status == noErr, "Failed to initialize audio unit. Status: %d", status);
 
     // Setup single interleaved stereo stream
-    AudioStreamBasicDescription streamFormat = (AudioStreamBasicDescription) {
+    ctx->streamFormat = (AudioStreamBasicDescription) {
         .mSampleRate = SAMPLE_RATE_DEFAULT, // TODO: make configurable
         .mFormatID = kAudioFormatLinearPCM,
         .mFormatFlags = kAudioFormatFlagIsFloat,
@@ -244,11 +244,11 @@ void CoreEngine_Start(CoreEngineContext* ctx)
                                   kAudioUnitProperty_StreamFormat, 
                                   kAudioUnitScope_Input, 
                                   0, // Global scope
-                                  &streamFormat, 
-                                  sizeof(streamFormat));
+                                  &ctx->streamFormat, 
+                                  sizeof(ctx->streamFormat));
     Assert(status == noErr, "Could not set stream format. Status: %d", status);
 
-    ctx->sampleRate = (f32)streamFormat.mSampleRate;
+    ctx->sampleRate = (f32)ctx->streamFormat.mSampleRate;
 
     const UInt32 maxFrames = 1024;
     status = AudioUnitSetProperty(
