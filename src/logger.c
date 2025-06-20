@@ -9,12 +9,14 @@
 #include <core_engine.h>
 
 static const char* levels_[LOG_NUM_LEVELS] = {
+    "TEST",
     "INFO",
     "WARN",
     "ERROR",
 };
 
 static const char* colors_[LOG_NUM_LEVELS] = {
+    ANSI_COLOR_BLUE, // TEST
     ANSI_COLOR_RESET, // INFO
     ANSI_COLOR_YELLOW, // WARN
     ANSI_COLOR_RED, // ERROR
@@ -22,7 +24,7 @@ static const char* colors_[LOG_NUM_LEVELS] = {
 
 static void DefaultAssertHandler(const char* message, const char* file, i32 line);
 
-static LogLevel currentLevel_ = LOG_INFO;
+static LogLevel currentLevel_ = LOG_TEST;
 static void (*assertHandler_)(const char*, const char*, i32) = NULL;
 
 static void DefaultAssertHandler(const char* message, const char* file, i32 line)

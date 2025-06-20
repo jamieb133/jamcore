@@ -12,6 +12,7 @@
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
 typedef enum {
+    LOG_TEST,
     LOG_INFO,
     LOG_WARNING,
     LOG_ERROR,
@@ -42,6 +43,7 @@ long long GetTimeMs();
 }
 
 
+#define LogTest(format, ...) _LogMessage(LOG_TEST, __FILE__, __LINE__, format, ##__VA_ARGS__)
 #define LogInfo(format, ...) _LogMessage(LOG_INFO, __FILE__, __LINE__, format, ##__VA_ARGS__)
 #define LogWarn(format, ...) _LogMessage(LOG_WARNING, __FILE__, __LINE__, format, ##__VA_ARGS__)
 #define LogError(format, ...) _LogMessage(LOG_ERROR, __FILE__, __LINE__, format, ##__VA_ARGS__)

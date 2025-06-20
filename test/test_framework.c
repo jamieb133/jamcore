@@ -163,6 +163,7 @@ void* TestRunner(void* args)
 
         TestSuite* suite = &testSuites_[currentTestNum_];
         currentTestNum_++;
+        LogTest("Starting Test Suite: %s", suite->name);
         pthread_mutex_unlock(&testRunnerMutex_);
 
         u64 suiteStartTime = GetTimeMs();
@@ -171,6 +172,7 @@ void* TestRunner(void* args)
         for (u16 j = 0; j < suite->numTests; j++) {
             u64 testStartTime;
             currentTest_ = &suite->testInfo[j];
+            LogTest("Starting Test Case: %s (%s)", currentTest_->name, suite->name);
             suite->Bringup(currentTest_);
 
             if (setjmp(testFailedJumpBuffer_)) {

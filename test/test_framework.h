@@ -10,7 +10,10 @@
 
 #define MAX_TESTS_PER_SUITE 128
 #define MAX_SUITES 64
-#define NUM_THREADS 4
+
+// TODO: figure out how to group test suites into those that can run in parallel
+// for now just use one thread.
+#define NUM_THREADS 1 
 
 typedef struct TestInfo {
     const char* name;
