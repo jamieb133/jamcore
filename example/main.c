@@ -62,6 +62,16 @@ int main()
         }
     }
 
+    { // Seek wav file
+        i32 twoSeconds = 5;
+        while (twoSeconds--) {
+            u32 seekPosition = 300000 * twoSeconds;
+            LogInfo("Seeking wav file to %d", seekPosition);
+            WavPlayer_Seek(&wavPlayer, seekPosition);
+            usleep(2000000);
+        }
+    }
+
     {
         // Sweep across
         remaining = windowMs;

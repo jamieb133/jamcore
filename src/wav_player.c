@@ -18,11 +18,11 @@ static void LoadNextChunk(void* data)
     u32 framesToRead = AUDIO_FILE_CHUNK_SIZE;
     u8 bufferToLoad = (atomic_load(&player->currentBufferIndex) == 0) ? 1 : 0;
 
-    if (player->flags & WAVPLAYER_RESET_CURSOR) {
-        status = ExtAudioFileSeek(player->audioFile, 0);
+    if (player->flags & WAVPLAYER_SEEK) {
+        status = ExtAudioFileSeek(player->audioFile, atomic_load(&player->seekPosition));
         Assert(status == noErr, "Failed to reset wav file cursor to start for id %d", player->id);
-        atomic_fetch_and(&player->flags, ~WAVPLAYER_RESET_CURSOR);
-        atomic_store(&player->currentFrame, 0);
+        atomic_fetch_and(&player->flags, ~WAVPLAYER_SEEK);
+        atomic_store(&player->currentFrame, atomic_load(&player->seekPosition));
     }
 
     status = ExtAudioFileRead(player->audioFile, &framesToRead, player->coreAudioBuffers[bufferToLoad]);
@@ -76,8 +76,8 @@ static void ProcessWavPlayer(f64 sampleRate, u16 numOutputFrames, f32* buffer, v
         }
         else if (atomic_load(&player->flags) & WAVPLAYER_LOOPING) {
             // File is finished but should loop, reset the cursor and load the next chunk
-            atomic_fetch_or(&player->flags, WAVPLAYER_RESET_CURSOR);
             atomic_store(&player->currentBufferIndex, (currentBufferIndex == 0) ? 1 : 0);
+            WavPlayer_Seek(player, 0);
             ThreadPool_DeferTask(player->threadPool, LoadNextChunk, (void*)player);
         }
         else {
@@ -164,5 +164,11 @@ u16 WavPlayer_Create(WavPlayer* player, CoreEngineContext* ctx, const char* file
     CFRelease(url);
 
     return CoreEngine_CreateProcessor(ctx, ProcessWavPlayer, DestroyWavPlayer, (void*)player);
+}
+
+void WavPlayer_Seek(WavPlayer *player, u32 seekPosition)
+{
+    atomic_store(&player->seekPosition, seekPosition);
+    atomic_fetch_or(&player->flags, WAVPLAYER_SEEK);
 }
 
