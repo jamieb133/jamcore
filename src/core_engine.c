@@ -1,3 +1,4 @@
+#include "thread_pool.h"
 #include <AudioToolbox/AUGraph.h>
 #include <AudioToolbox/AudioToolbox.h>
 #include <CoreAudioTypes/CoreAudioBaseTypes.h>
@@ -151,6 +152,12 @@ static OSStatus AudioRenderCallback(void* args,
     BufferProduct(masterBuffer->mData, ctx->masterVolumeScale, BUFFER_SIZE);
     ScratchAllocator_Release(&ctx->scratchAllocator);
 
+    // ========================================================================
+    // Execute any deferred non-realtime tasks (e.g. file IO)
+    // ========================================================================
+
+    ThreadPool_FlushTasks(&ctx->threadPool); 
+
     return noErr;
 }
 
@@ -177,6 +184,8 @@ void CoreEngine_Init(CoreEngineContext *ctx, float masterVolumeScale, u64 heapAr
     ctx->processorMask = 0;
     ctx->sampleRate = 0;
 
+    ThreadPool_Init(&ctx->threadPool, 4/* TODO: base this on number of cores? */, MAX_TASKS);
+
     instance_ = ctx;
     SetFlag(ctx, ENGINE_INITIALIZED);
 }
@@ -201,6 +210,7 @@ void CoreEngine_Deinit(CoreEngineContext* ctx)
 
     ctx->flags = 0;
     ScratchAllocator_Release(&ctx->scratchAllocator);
+    ThreadPool_Deinit(&ctx->threadPool);
     instance_ = NULL;
 }
 
@@ -284,6 +294,8 @@ void CoreEngine_Start(CoreEngineContext* ctx)
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
 
+    ThreadPool_Start(&ctx->threadPool);
+
     // Must set this first before the next line in case of panic so we can close it
     instance_ = ctx;
 
@@ -295,6 +307,9 @@ void CoreEngine_Stop(CoreEngineContext* ctx)
 {
     Assert(IsFlagSet(ctx, ENGINE_INITIALIZED), "Engine not initialised");
     Assert(IsFlagSet(ctx, ENGINE_STARTED), "Engine not started");
+
+    // Stop remaining non-realtime tasks
+    ThreadPool_Stop(&ctx->threadPool);
 
     OSStatus status;
     SetFlag(ctx, ENGINE_STOP_REQUESTED);

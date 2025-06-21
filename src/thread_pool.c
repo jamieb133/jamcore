@@ -84,14 +84,17 @@ void ThreadPool_Stop(ThreadPool* pool)
     }
 }
 
-void ThreadPool_DeferTask(ThreadPool* pool, TaskInfo job)
+void ThreadPool_DeferTask(ThreadPool* pool, TaskCallback callback, void* data)
 {
     Assert(pool, "ThreadPool is null");
     Assert(pool->numPendingTasks < pool->capacity, "Number of tasks reached capacity");
     
     // NOTE: not thread safe, intended only to be called by the audio thread
 
-    pool->tasks[pool->numPendingTasks] = job;
+    pool->tasks[pool->numPendingTasks] = (TaskInfo) {
+        .callback = callback,
+        .data = data,
+    };
     atomic_fetch_add(&pool->numPendingTasks, 1);
 }
 

@@ -3,7 +3,7 @@
 #include <thread_pool.h>
 #include <unistd.h>
 
-static void TaskCallback(void* data)
+static void TestCallback(void* data)
 {
     _Atomic(u8)* count = (_Atomic(u8)*)data;
     Assert(count, "TaskCallback data is NULL");
@@ -22,13 +22,8 @@ TEST(ThreadPool, RunTasks)
 
     _Atomic(u8) count = 0;
 
-    TaskInfo task = (TaskInfo) {
-        .callback = TaskCallback,
-        .data = (void*)&count,
-    };
-
     for (u8 i = 0; i < numTasks; i++) 
-        ThreadPool_DeferTask(&pool, task);
+        ThreadPool_DeferTask(&pool, TestCallback, (void*)&count);
 
     ThreadPool_FlushTasks(&pool);
     ThreadPool_Stop(&pool);

@@ -10,8 +10,10 @@
 #include <stdint.h>
 
 #include <types.h>
+#include <thread_pool.h>
 
 #define MAX_PROCESSORS 4096
+#define MAX_TASKS 256
 
 #define STACK_ARENA_SIZE_KB 32
 #define DEFAULT_HEAP_ARENA_SIZE_KB 30000
@@ -59,6 +61,9 @@ typedef struct {
     u64 sourceMask;
     JamAudioProcessor processors[MAX_PROCESSORS];
 
+    // Thread Pool
+    ThreadPool threadPool;
+
     // CoreAudio audio unit
     AudioUnit caUnit;
     AudioStreamBasicDescription streamFormat;
@@ -73,6 +78,7 @@ void CoreEngine_AddSource(CoreEngineContext* ctx, u16 id);
 u16 CoreEngine_CreateProcessor(CoreEngineContext* ctx, JamProcessFunc procFunc, JamDestroyFunc destFunc, void* data);
 void CoreEngine_RemoveProcessor(CoreEngineContext* ctx, u16 id);
 void CoreEngine_Route(CoreEngineContext* ctx, u16 inputId, u16 outputId, bool shouldRoute);
+void CoreEngine_SubmitTask(CoreEngineContext* ctx, TaskInfo task);
 void CoreEngine_Panic(CoreEngineContext* ctx);
 void CoreEngine_GlobalPanic(void);
 

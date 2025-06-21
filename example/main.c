@@ -27,7 +27,7 @@ int main()
 
     // Create WAV Player
     WavPlayer wavPlayer;
-    u16 wavPlayerId = WavPlayer_Create(&wavPlayer, &context, "example/Kings.wav", false);
+    u16 wavPlayerId = WavPlayer_Create(&wavPlayer, &context, "example/Kings.wav", WAVPLAYER_LOOPING);
     CoreEngine_AddSource(&context, wavPlayerId);
 
     // Create a channel fader for each oscillator
