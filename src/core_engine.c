@@ -24,6 +24,7 @@ static void HandleSigInt(int sig)
 static void AssertHandler(const char* message, const char* file, i32 line)
 {
     fprintf(stderr, "%s %s:%d\n", message, file, line);
+    __builtin_debugtrap();
     CoreEngine_GlobalPanic();
 }
 

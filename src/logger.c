@@ -30,6 +30,7 @@ static void (*assertHandler_)(const char*, const char*, i32) = NULL;
 static void DefaultAssertHandler(const char* message, const char* file, i32 line)
 {
     fprintf(stderr, "%s %s:%d\n", message, file , line);
+    __builtin_debugtrap();
     exit(1);
 }
 

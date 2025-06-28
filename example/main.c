@@ -6,6 +6,7 @@
 #include <logger.h>
 #include <fader.h>
 #include <wav_player.h>
+#include <iir_filter.h>
 
 int main()
 {
@@ -30,6 +31,10 @@ int main()
     u16 wavPlayerId = WavPlayer_Create(&wavPlayer, &context, "example/Kings.wav", WAVPLAYER_LOOPING);
     CoreEngine_AddSource(&context, wavPlayerId);
 
+    // Create a lowpass IIR filter
+    IirFilter lowpass;
+    u16 filterId = IirFilter_Create(&lowpass, &context, SAMPLE_RATE_DEFAULT, IIR_LOWPASS, 100, 1, 1);
+
     // Create a channel fader for each oscillator
     Fader sqFader, sinFader, wavFader;
     u16 faderId1, faderId2, faderId3;
@@ -41,8 +46,10 @@ int main()
     CoreEngine_Route(&context, sinOscId, faderId2, true);
     // Route the saw signal to mixer control
     CoreEngine_Route(&context, sqOscId, faderId1, true);
-    // Route the wav file audio to mixer control
-    CoreEngine_Route(&context, wavPlayerId, faderId3, true);
+    // Apply lowpass filter to wav audio
+    CoreEngine_Route(&context, wavPlayerId, filterId, true);
+    // Route the filtered wav file audio to mixer control
+    CoreEngine_Route(&context, filterId, faderId3, true);
 
     // Start audio
     CoreEngine_Start(&context);
@@ -68,6 +75,15 @@ int main()
             u32 seekPosition = 300000 * twoSeconds;
             LogInfo("Seeking wav file to %d", seekPosition);
             WavPlayer_Seek(&wavPlayer, seekPosition);
+            if (lowpass.type == IIR_LOWPASS) {
+                lowpass.type = IIR_HIGHPASS;
+                lowpass.freq = 1000;
+            }
+            else {
+                lowpass.type = IIR_LOWPASS;
+                lowpass.freq = 100;
+            }
+            IirFilter_Recalculate(&lowpass);
             usleep(2000000);
         }
     }
