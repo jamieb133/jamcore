@@ -24,7 +24,6 @@ static void HandleSigInt(int sig)
 static void AssertHandler(const char* message, const char* file, i32 line)
 {
     fprintf(stderr, "%s %s:%d\n", message, file, line);
-    __builtin_debugtrap();
     CoreEngine_GlobalPanic();
 }
 
@@ -151,6 +150,7 @@ static OSStatus AudioRenderCallback(void* args,
     }
 
     BufferProduct(masterBuffer->mData, ctx->masterVolumeScale, BUFFER_SIZE);
+    LogInfoPeriodic(5000, "Used buffer space %d/%d",ctx->scratchAllocator.offset, ctx->scratchAllocator.size);
     ScratchAllocator_Release(&ctx->scratchAllocator);
 
     // ========================================================================
@@ -405,11 +405,14 @@ void CoreEngine_Panic(CoreEngineContext* ctx)
     // Prevent recursion in case CoreEngine_Stop fails, in such case we have no option but to hard kill
     if (IsFlagSet(ctx, ENGINE_STOP_REQUESTED)) {
         LogWarn("CoreEngine error occurred while trying to stop after previous panic");
+        __builtin_debugtrap();
         exit(1);
     }
     
     // No going back!
     CoreEngine_Stop(ctx);
+    CoreEngine_Deinit(ctx);
+    __builtin_debugtrap();
     exit(0);
 }
 

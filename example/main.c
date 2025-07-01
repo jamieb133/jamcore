@@ -7,9 +7,12 @@
 #include <fader.h>
 #include <wav_player.h>
 #include <iir_filter.h>
+#include <audio_renderer.h>
 
 int main()
 {
+    SetLogLevel(LOG_INFO);
+
     CoreEngineContext context;
     memset(&context, 0, sizeof(CoreEngineContext));
 
@@ -35,12 +38,17 @@ int main()
     IirFilter lowpass;
     u16 filterId = IirFilter_Create(&lowpass, &context, SAMPLE_RATE_DEFAULT, IIR_LOWPASS, 100, 1, 1);
 
-    // Create a channel fader for each oscillator
-    Fader sqFader, sinFader, wavFader;
-    u16 faderId1, faderId2, faderId3;
+    // Create a renderer to record the audio to a file
+    AudioRenderer renderer;
+    u16 rendererId = AudioRenderer_Create(&renderer, &context, "Example_Rendered.wav");
+
+    // Create a channel fader for each audio source
+    Fader sqFader, sinFader, wavFader, recordFader;
+    u16 faderId1, faderId2, faderId3, faderId4;
     faderId1 = Fader_Create(&sqFader, -1.0f, 0.0f, &context);
     faderId2 = Fader_Create(&sinFader, 1.0f, 0.0f, &context);
     faderId3 = Fader_Create(&wavFader, 0.0f, 0.0f, &context);
+    faderId4 = Fader_Create(&recordFader, 0.0f, 0.5f, &context);
 
     // Route the sin signal to mixer control
     CoreEngine_Route(&context, sinOscId, faderId2, true);
@@ -50,6 +58,16 @@ int main()
     CoreEngine_Route(&context, wavPlayerId, filterId, true);
     // Route the filtered wav file audio to mixer control
     CoreEngine_Route(&context, filterId, faderId3, true);
+
+    // Record input file without filtering
+    CoreEngine_Route(&context, wavPlayerId, faderId4, true);
+
+    // Connect Fader 4 output to Renderer
+    CoreEngine_Route(&context, faderId4, rendererId, true);
+
+    // Start recording, don't output audio from the renderer
+    AudioRenderer_StartRecord(&renderer);
+    renderer.flags |= AUDIO_RENDERER_MUTE;
 
     // Start audio
     CoreEngine_Start(&context);
@@ -144,6 +162,9 @@ int main()
             usleep(1000);
         }
     }
+
+    // Stop recording
+    AudioRenderer_StopRecord(&renderer);
 
     // Stop audio
     CoreEngine_Stop(&context);

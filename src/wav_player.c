@@ -26,7 +26,7 @@ static void LoadNextChunk(void* data)
     }
 
     status = ExtAudioFileRead(player->audioFile, &framesToRead, player->coreAudioBuffers[bufferToLoad]);
-    Assert(status == noErr, "Failed to load audio file for WavPlayer %d", player->id);
+    Assert(status == noErr, "Failed to load chunk from audio file for WavPlayer %d", player->id);
 
     atomic_store(&player->currentNumFrames[bufferToLoad], framesToRead);
 
@@ -56,10 +56,13 @@ static void ProcessWavPlayer(f64 sampleRate, u16 numOutputFrames, f32* buffer, v
     u16 framesThisTime = (remainingFrames < numOutputFrames) ? remainingFrames : numOutputFrames;
     f32* wavBuffer = (f32*)player->coreAudioBuffers[currentBufferIndex]->mBuffers[0].mData;
     u32 baseSampleIndex = currentFrameInBuffer * 2;
+    u8 flags = atomic_load(&player->flags);
 
     // Copy audio data from the Wav file into the output buffer
     for (u16 i = 0; i < framesThisTime; i++) {
         u32 sampleIndex = baseSampleIndex + i * 2;
+
+        // TODO: Handle under-run
         buffer[i * 2] += wavBuffer[sampleIndex];
         buffer[i * 2 + 1] += wavBuffer[sampleIndex + 1];
     }
@@ -118,8 +121,10 @@ u16 WavPlayer_Create(WavPlayer* player, CoreEngineContext* ctx, const char* file
     status = ExtAudioFileOpenURL(url, &player->audioFile);
     Assert(status == noErr, "Failed to open %s", filename);
 
+    // TODO: get the sample rate from file metadata
+
     AudioStreamBasicDescription streamFormat = (AudioStreamBasicDescription) {
-        .mSampleRate = 44100,
+        .mSampleRate = SAMPLE_RATE_DEFAULT,
         .mFormatID = kAudioFormatLinearPCM,
         .mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
         .mBytesPerPacket = 4 * 2,
@@ -168,6 +173,7 @@ u16 WavPlayer_Create(WavPlayer* player, CoreEngineContext* ctx, const char* file
 
 void WavPlayer_Seek(WavPlayer *player, u32 seekPosition)
 {
+    LogInfo("Seek to %d", seekPosition);
     atomic_store(&player->seekPosition, seekPosition);
     atomic_fetch_or(&player->flags, WAVPLAYER_SEEK);
 }

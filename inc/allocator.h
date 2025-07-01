@@ -23,11 +23,11 @@
 
 typedef struct {
     u8* base;
-    u16 offset, size;
+    u32 offset, size;
 } ScratchAllocator;
 
-void ScratchAllocator_Init(ScratchAllocator* alloc, u8* base, u16 size);
-void* ScratchAllocator_Alloc(ScratchAllocator* alloc, u16 size);
-void* ScratchAllocator_Calloc(ScratchAllocator* alloc, u16 size);
+void ScratchAllocator_Init(ScratchAllocator* alloc, u8* base, u32 size);
+void* ScratchAllocator_Alloc(ScratchAllocator* alloc, u32 size);
+void* ScratchAllocator_Calloc(ScratchAllocator* alloc, u32 size);
 void ScratchAllocator_Release(ScratchAllocator* alloc);
 

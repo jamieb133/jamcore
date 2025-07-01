@@ -57,7 +57,7 @@ static void CalculateCoeffs(void* data)
         break;
     }
 
-    LogInfo("Calculated IIR coefficients: a0=%f, a1=%f, a2=%f, b0=%f, b1=%f, b2=f%",
+    LogTest("Calculated IIR coefficients: a0=%f, a1=%f, a2=%f, b0=%f, b1=%f, b2=f%",
                 filter->coeffs.a0,
                 filter->coeffs.a1,
                 filter->coeffs.a2,
