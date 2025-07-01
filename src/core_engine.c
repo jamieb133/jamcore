@@ -42,7 +42,7 @@ static inline bool IsFlagSet(CoreEngineContext* ctx, u8 flag)
     return ctx->flags & (1 << flag);
 }
 
-static void Traverse(JamAudioProcessor* processors, 
+static void Traverse(AudioProcessor* processors, 
                         u16 processorId, 
                         f64 sampleRate, 
                         u16 numFrames, 
@@ -51,15 +51,16 @@ static void Traverse(JamAudioProcessor* processors,
                         u8 stackDepth, 
                         ScratchAllocator* alloc)
 {
+    LogTrace("Traverse %d", stackDepth);
     Assert(stackDepth < 128, "Stack depth limit exceeded");
 
     // Do DSP
-    JamAudioProcessor* processor = &processors[processorId];
+    AudioProcessor* processor = &processors[processorId];
     processor->Process(sampleRate, numFrames, inputBuffer, processor->procData);
 
     // End of branch, write to master buffer then exit
     if (processor->outputRoutingMask == 0) {
-        BufferParallelSum(outputBuffer, inputBuffer, BUFFER_SIZE);
+        BufferParallelSum(outputBuffer, inputBuffer, numFrames * 2);
         return;
     }
 
@@ -86,6 +87,8 @@ static OSStatus AudioRenderCallback(void* args,
     (void)timestamp; // TODO: probably want to use this
     (void)busNumber;
     (void)ioActionFlags;
+
+    LogTrace("< -- NEW AUDIO CYCLE -->");
 
     CoreEngineContext* ctx = (CoreEngineContext*)args;
     AudioBuffer* masterBuffer = &ioData->mBuffers[0];
@@ -124,13 +127,28 @@ static OSStatus AudioRenderCallback(void* args,
     Assert(ioData->mNumberBuffers == 1, "Error expected single interleaved audio stream");
 
     // ========================================================================
+    // Notify all active processors of new audio cycle
+    // ========================================================================
+    
+    u64 currentProcessorMask = ctx->processorMask;
+
+    while (currentProcessorMask != 0) {
+        u16 nextId = CountTrailingZeros(currentProcessorMask);
+        currentProcessorMask &= ~(1 << nextId);
+        AudioProcessor* proc = &ctx->processors[nextId];
+        if (proc->OnNewAudioCycle) {
+            proc->OnNewAudioCycle(proc->procData);
+        }
+    }
+
+    // ========================================================================
     // Traverse the audio graph
     // ========================================================================
 
-    f32* inputBuffer = ScratchAllocator_Calloc(&ctx->scratchAllocator, BUFFER_SIZE * sizeof(f32));
     u64 currentSourceMask = ctx->sourceMask; 
 
     while (currentSourceMask != 0) {
+        f32* inputBuffer = ScratchAllocator_Calloc(&ctx->scratchAllocator, BUFFER_SIZE * sizeof(f32));
         u16 nextId = CountTrailingZeros(currentSourceMask);
         currentSourceMask &= ~(1 << nextId);
 
@@ -200,7 +218,7 @@ void CoreEngine_Deinit(CoreEngineContext* ctx)
     while (currentMask != 0) {
         u16 nextId = CountTrailingZeros(currentMask);
         currentMask &= ~(1 << nextId);
-        JamAudioProcessor* proc = &ctx->processors[nextId];
+        AudioProcessor* proc = &ctx->processors[nextId];
         if (proc->Destroy) {
             proc->Destroy(proc->procData);
         }
@@ -341,7 +359,11 @@ void CoreEngine_AddSource(CoreEngineContext* ctx, u16 id)
     ctx->sourceMask |= (1 << id);
 }
 
-u16 CoreEngine_CreateProcessor(CoreEngineContext* ctx, JamProcessFunc procFunc, JamDestroyFunc destFunc, void* data)
+u16 CoreEngine_CreateProcessor(CoreEngineContext* ctx, 
+                               ProcessFunc procFunc, 
+                               DestroyFunc destFunc, 
+                               OnNewAudioCycleFunc onNewAudioCycleFunc, 
+                               void* data)
 {
     Assert(ctx, "Context is null");
     Assert(IsFlagSet(ctx, ENGINE_INITIALIZED), "Engine not initialised");
@@ -351,11 +373,12 @@ u16 CoreEngine_CreateProcessor(CoreEngineContext* ctx, JamProcessFunc procFunc, 
     UInt16 freeSlot = (ctx->processorMask == 0) ? 0 : __builtin_ctz((unsigned int)~ctx->processorMask);
     ctx->processorMask |= (1 << freeSlot);
 
-    JamAudioProcessor* processor = &ctx->processors[freeSlot];
+    AudioProcessor* processor = &ctx->processors[freeSlot];
     processor->inputRoutingMask = 0;
     processor->outputRoutingMask = 0;
     processor->Process = procFunc;
     processor->Destroy = destFunc;
+    processor->OnNewAudioCycle = onNewAudioCycleFunc;
     processor->procData = data;
 
     return freeSlot;
@@ -378,8 +401,8 @@ void CoreEngine_Route(CoreEngineContext *ctx, u16 srcId, u16 dstId, bool shouldR
     Assert(ctx->processorMask & (1 << srcId), "Tried to route non-existing src processor %d", srcId);
     Assert(ctx->processorMask & (1 << dstId), "Tried to route non-existing dst processor %d", dstId);
 
-    JamAudioProcessor* srcProc = &ctx->processors[srcId];
-    JamAudioProcessor* dstProc = &ctx->processors[dstId];
+    AudioProcessor* srcProc = &ctx->processors[srcId];
+    AudioProcessor* dstProc = &ctx->processors[dstId];
 
     if (shouldRoute) {
         srcProc->outputRoutingMask |= (1 << dstId);

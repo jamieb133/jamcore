@@ -83,7 +83,7 @@ TEST(CoreEngine, CreateProcessors)
     CoreEngineContext ctx;
     FakeProcessor proc[100];
     
-    CHECK_DEATH(CoreEngine_CreateProcessor(NULL, NULL, NULL, NULL));
+    CHECK_DEATH(CoreEngine_CreateProcessor(NULL, NULL, NULL, NULL, NULL));
     CHECK_DEATH(FakeProcessor_Create(&proc[0], &ctx, BUFFER_SIZE));
 
     CoreEngine_Init(&ctx, 1.0f, 4096);
@@ -117,6 +117,7 @@ TEST(CoreEngine, ProcessAudio)
         CHECK_TRUE(false);
     }
 
+    CHECK_TRUE(proc.newAudioCycleCalled);
     CHECK_TRUE(proc.numFrames == (BUFFER_SIZE / 2));
     CHECK_TRUE(proc.sampleRate == SAMPLE_RATE_DEFAULT);
     CHECK_TRUE(memcmp(proc.buffer, silentBuffer, proc.numFrames * 2) == 0);

@@ -37,6 +37,7 @@ static void LoadNextChunk(void* data)
 
 static void ProcessWavPlayer(f64 sampleRate, u16 numOutputFrames, f32* buffer, void* data)
 {
+    LogTrace("Process wav");
     (void)sampleRate;
 
     WavPlayer* player = (WavPlayer*)data;
@@ -56,7 +57,6 @@ static void ProcessWavPlayer(f64 sampleRate, u16 numOutputFrames, f32* buffer, v
     u16 framesThisTime = (remainingFrames < numOutputFrames) ? remainingFrames : numOutputFrames;
     f32* wavBuffer = (f32*)player->coreAudioBuffers[currentBufferIndex]->mBuffers[0].mData;
     u32 baseSampleIndex = currentFrameInBuffer * 2;
-    u8 flags = atomic_load(&player->flags);
 
     // Copy audio data from the Wav file into the output buffer
     for (u16 i = 0; i < framesThisTime; i++) {
@@ -121,10 +121,14 @@ u16 WavPlayer_Create(WavPlayer* player, CoreEngineContext* ctx, const char* file
     status = ExtAudioFileOpenURL(url, &player->audioFile);
     Assert(status == noErr, "Failed to open %s", filename);
 
-    // TODO: get the sample rate from file metadata
+    AudioStreamBasicDescription readDesc;
+    u32 propSize = sizeof(readDesc);
+    status = ExtAudioFileGetProperty(player->audioFile, kExtAudioFileProperty_FileDataFormat, &propSize, &readDesc);
+    Assert(status == noErr, "Failed to get file data format properties for %s", filename);
+    LogInfo("WAV file sample rate is %f", readDesc.mSampleRate);
 
     AudioStreamBasicDescription streamFormat = (AudioStreamBasicDescription) {
-        .mSampleRate = SAMPLE_RATE_DEFAULT,
+        .mSampleRate = readDesc.mSampleRate,
         .mFormatID = kAudioFormatLinearPCM,
         .mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
         .mBytesPerPacket = 4 * 2,
@@ -138,9 +142,9 @@ u16 WavPlayer_Create(WavPlayer* player, CoreEngineContext* ctx, const char* file
     Assert(status == noErr, "Failed to set file properties for %s", filename);
 
     i64 totalFrames;
-    u32 propSize = sizeof(totalFrames);
+    propSize = sizeof(totalFrames);
     status = ExtAudioFileGetProperty(player->audioFile, kExtAudioFileProperty_FileLengthFrames, &propSize, &totalFrames);
-    Assert(status == noErr, "Failed to get file properties for %s", filename);
+    Assert(status == noErr, "Failed to get file length for %s", filename);
     Assert(totalFrames > 0, "Total frames read in %s was 0", filename);
 
     u32 dataByteSize = AUDIO_FILE_CHUNK_SIZE * streamFormat.mBytesPerFrame;
@@ -168,7 +172,7 @@ u16 WavPlayer_Create(WavPlayer* player, CoreEngineContext* ctx, const char* file
 
     CFRelease(url);
 
-    return CoreEngine_CreateProcessor(ctx, ProcessWavPlayer, DestroyWavPlayer, (void*)player);
+    return CoreEngine_CreateProcessor(ctx, ProcessWavPlayer, DestroyWavPlayer, NULL, (void*)player);
 }
 
 void WavPlayer_Seek(WavPlayer *player, u32 seekPosition)

@@ -12,23 +12,24 @@ static void WriteNextChunk(void* data)
     AudioRenderer* renderer = (AudioRenderer*)data;
     Assert(renderer, "Renderer is null");
 
-    LogInfo("Renderering %d bytes", renderer->numFramesToWrite);
-
-    for (u16 i = 0; i < renderer->numFramesToWrite; i++) {
-        //LogInfo("%d %d", renderer->coreAudioBuffers[atomic_load(&renderer->currentBufferIndex) == 0 ? 1 : 0].
-    }
+    LogInfo("Rendering %d bytes", renderer->numFramesToWrite);
 
     ExtAudioFileWrite(renderer->outputFile, 
                       renderer->numFramesToWrite, 
                       renderer->coreAudioBuffers[atomic_load(&renderer->currentBufferIndex) == 0 ? 1 : 0]); 
-                      //renderer->coreAudioBuffers[atomic_load(&renderer->currentBufferIndex) == 0 ? 0 : 1]); 
+
+    renderer->numFramesToWrite = 0;
 }
 
-static void ScheduleWrite(AudioRenderer* renderer, u16 numFramesToWrite)
+static void ScheduleWrite(AudioRenderer* renderer)
 {
-    atomic_store(&renderer->currentBufferIndex, atomic_load(&renderer->currentBufferIndex) == 0 ? 1 : 0);
+    u16 bufferToPassToWriteChunk = atomic_load(&renderer->currentBufferIndex);
+    atomic_store(&renderer->currentBufferIndex,
+                 (bufferToPassToWriteChunk == 0 ? 1 : 0));
     atomic_store(&renderer->seekPosition, 0);
-    atomic_store(&renderer->numFramesToWrite, numFramesToWrite);
+    memset(renderer->coreAudioBuffers[atomic_load(&renderer->currentBufferIndex)]->mBuffers[0].mData,
+           0,
+           AUDIO_FILE_CHUNK_SIZE * renderer->streamFormat.mBytesPerFrame);
     ThreadPool_DeferTask(renderer->threadPool, WriteNextChunk, renderer);
 }
 
@@ -43,35 +44,29 @@ static void ProcessRenderer(f64 sampleRate, u16 numFrames, f32* buffer, void* da
         return;
     }
 
-    u16 inputBufferOffsetFrames = 0;
+    u16 currentBufferIndex = atomic_load(&renderer->currentBufferIndex);
+    u16 seekPosition = atomic_load(&renderer->seekPosition);
 
-    while (inputBufferOffsetFrames < numFrames) {
-        u16 currentBufferIndex = atomic_load(&renderer->currentBufferIndex);
-        u16 seekPosition = atomic_load(&renderer->seekPosition); // Position in current output buffer
-        f32* outputBuffer = (f32*)renderer->coreAudioBuffers[currentBufferIndex]->mBuffers[0].mData;
+    f32* outputBuffer = (f32*)renderer->coreAudioBuffers[currentBufferIndex]->mBuffers[0].mData;
+    u16 channelsPerFrame = renderer->streamFormat.mChannelsPerFrame;
 
-        u16 remainingFramesInCurrentOutputChunk = AUDIO_FILE_CHUNK_SIZE - seekPosition;
-        u16 framesToCopy = MIN(numFrames - inputBufferOffsetFrames, remainingFramesInCurrentOutputChunk);
+    // TODO: how to start filling into the next buffer if it spills over?
+    u16 framesToProcess = MIN(numFrames, AUDIO_FILE_CHUNK_SIZE - seekPosition);
 
-        for (u16 i = 0; i < framesToCopy; ++i) {
-            u32 outputSampleIndex = (seekPosition + i) * renderer->streamFormat.mChannelsPerFrame;
-            u32 inputSampleIndex = (inputBufferOffsetFrames + i) * 2;
-            outputBuffer[outputSampleIndex] = buffer[inputSampleIndex];
-            outputBuffer[outputSampleIndex + 1] = buffer[inputSampleIndex + 1];
-            
-            if (atomic_load(&renderer->flags) & AUDIO_RENDERER_MUTE) {
-                memset(&buffer[inputSampleIndex], 0, sizeof(f32) * 2);
-            }
-        }
+    for (u16 i = 0; i < framesToProcess; ++i) {
+        u32 outputSampleOffset = (seekPosition + i) * channelsPerFrame;
+        u32 inputSampleOffset = i * 2;
 
-        atomic_fetch_add(&renderer->seekPosition, framesToCopy);
-        inputBufferOffsetFrames += framesToCopy;
+        outputBuffer[outputSampleOffset] += buffer[inputSampleOffset];     // Left channel
+        outputBuffer[outputSampleOffset + 1] += buffer[inputSampleOffset + 1]; // Right channel
 
-        if (atomic_load(&renderer->seekPosition) >= AUDIO_FILE_CHUNK_SIZE) {
-            LogInfo("Scheduling Write (Full Chunk)");
-            ScheduleWrite(renderer, AUDIO_FILE_CHUNK_SIZE);
+        if (atomic_load(&renderer->flags) & AUDIO_RENDERER_MUTE) {
+            outputBuffer[outputSampleOffset] = 0.0f;
+            outputBuffer[outputSampleOffset + 1] = 0.0f;
         }
     }
+
+    renderer->framesThisCycle = numFrames;
 }
 
 static void DestroyRenderer(void* data)
@@ -96,6 +91,21 @@ static void DestroyRenderer(void* data)
     }
 
     ExtAudioFileDispose(renderer->outputFile);
+}
+
+static void RendererOnNewAudioCycle(void* data)
+{
+    AudioRenderer* renderer = (AudioRenderer*)data;
+    Assert(renderer, "Renderer is null");
+
+    u16 oldSeekPosition = atomic_fetch_add(&renderer->seekPosition, renderer->framesThisCycle);
+    u16 newCalculatedSeekPosition = oldSeekPosition + renderer->framesThisCycle; // This is the logical end position
+
+    if (newCalculatedSeekPosition >= AUDIO_FILE_CHUNK_SIZE) {
+        atomic_store(&renderer->numFramesToWrite, AUDIO_FILE_CHUNK_SIZE);
+        LogInfo("Scheduling Write (Full Chunk, previous seek %u, frames processed %u)", oldSeekPosition, renderer->framesThisCycle);
+        ScheduleWrite(renderer);
+    }
 }
 
 u16 AudioRenderer_Create(AudioRenderer* renderer, CoreEngineContext* ctx, const char* filename)
@@ -155,11 +165,12 @@ u16 AudioRenderer_Create(AudioRenderer* renderer, CoreEngineContext* ctx, const 
     renderer->currentBufferIndex = 0;
     renderer->flags = 0;
     renderer->seekPosition = 0;
+    renderer->framesThisCycle = 0;
     renderer->threadPool = &ctx->threadPool;
 
     CFRelease(url);
 
-    return CoreEngine_CreateProcessor(ctx, ProcessRenderer, DestroyRenderer, (void*)renderer);
+    return CoreEngine_CreateProcessor(ctx, ProcessRenderer, DestroyRenderer, RendererOnNewAudioCycle, (void*)renderer);
 }
 
 void AudioRenderer_StartRecord(AudioRenderer* renderer)
@@ -172,7 +183,8 @@ void AudioRenderer_StopRecord(AudioRenderer* renderer)
     renderer->flags &= ~AUDIO_RENDERER_RECORDING;
     
     if (atomic_load(&renderer->seekPosition) > 0) {
-        ScheduleWrite(renderer, renderer->seekPosition);
+        renderer->numFramesToWrite = renderer->seekPosition;
+        ScheduleWrite(renderer);
     }
 }
 

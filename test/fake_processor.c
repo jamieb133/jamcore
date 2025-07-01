@@ -43,6 +43,16 @@ static void DestroyFake(void* data)
     pthread_cond_destroy(&proc->cond);
 }
 
+static void FakeOnNewAudioCycle(void* data)
+{
+    FakeProcessor* proc = (FakeProcessor*)data;
+    Assert(proc, "Expected valid FakeProcessor but got null"); 
+
+    pthread_mutex_lock(&proc->mutex);
+    proc->newAudioCycleCalled = true;
+    pthread_mutex_unlock(&proc->mutex);
+}
+
 u16 FakeProcessor_Create(FakeProcessor* proc, CoreEngineContext* ctx, u16 bufferSize)
 {
     pthread_mutex_init(&proc->mutex, NULL);
@@ -53,7 +63,7 @@ u16 FakeProcessor_Create(FakeProcessor* proc, CoreEngineContext* ctx, u16 buffer
     proc->numFrames = 0;
     proc->receivedData = false;
 
-    return CoreEngine_CreateProcessor(ctx, ProcessFake, DestroyFake, (void*)proc);
+    return CoreEngine_CreateProcessor(ctx, ProcessFake, DestroyFake, FakeOnNewAudioCycle, (void*)proc);
 }
 
 bool FakeProcessor_WaitForData(FakeProcessor *proc)

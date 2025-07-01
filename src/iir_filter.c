@@ -96,6 +96,8 @@ static f32 FilterSample(IirFilter* filter, f32 sample, u8 index)
 
 static void ProcessIirFilter(f64 sampleRate, u16 numFrames, f32* buffer, void* data)
 {
+    LogTrace("Process IIR");
+
     IirFilter* filter = (IirFilter*)data;
     Assert(filter, "Filter is null");
 
@@ -131,7 +133,7 @@ u16 IirFilter_Create(IirFilter *filter,
 
     CalculateCoeffs((void*)filter);
 
-    return CoreEngine_CreateProcessor(ctx, ProcessIirFilter, NULL, (void*)filter); 
+    return CoreEngine_CreateProcessor(ctx, ProcessIirFilter, NULL, NULL, (void*)filter); 
 }
 
 void IirFilter_Recalculate(IirFilter *filter)

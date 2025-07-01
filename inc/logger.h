@@ -9,10 +9,13 @@
 #define ANSI_COLOR_GREEN   "\x1b[32m"
 #define ANSI_COLOR_YELLOW  "\x1b[33m"
 #define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA    "\x1b[36m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
 typedef enum {
     LOG_TEST,
+    LOG_TRACE,
     LOG_INFO,
     LOG_WARNING,
     LOG_ERROR,
@@ -44,14 +47,19 @@ long long GetTimeMs();
 
 
 #define LogTest(format, ...) _LogMessage(LOG_TEST, __FILE__, __LINE__, format, ##__VA_ARGS__)
+#define LogTrace(format, ...) _LogMessage(LOG_TRACE, __FILE__, __LINE__, format, ##__VA_ARGS__)
 #define LogInfo(format, ...) _LogMessage(LOG_INFO, __FILE__, __LINE__, format, ##__VA_ARGS__)
 #define LogWarn(format, ...) _LogMessage(LOG_WARNING, __FILE__, __LINE__, format, ##__VA_ARGS__)
 #define LogError(format, ...) _LogMessage(LOG_ERROR, __FILE__, __LINE__, format, ##__VA_ARGS__)
 
+#define LogTestOnce(format, ...) LogOnce(LOG_TEST, format, ##__VA_ARGS__)
+#define LogTraceOnce(format, ...) LogOnce(LOG_TRACE, format, ##__VA_ARGS__)
 #define LogInfoOnce(format, ...) LogOnce(LOG_INFO, format, ##__VA_ARGS__)
 #define LogWarnOnce(format, ...) LogOnce(LOG_WARNING, format, ##__VA_ARGS__)
 #define LogErrorOnce(format, ...) LogOnce(LOG_ERROR, format, ##__VA_ARGS__)
 
+#define LogTestPeriodic(periodMs, format, ...) LogPeriodic(LOG_TEST, periodMs, format, ##__VA_ARGS__)
+#define LogDebugPeriodic(periodMs, format, ...) LogPeriodic(LOG_TRACE, periodMs, format, ##__VA_ARGS__)
 #define LogInfoPeriodic(periodMs, format, ...) LogPeriodic(LOG_INFO, periodMs, format, ##__VA_ARGS__)
 #define LogWarnPeriodic(periodMs, format, ...) LogPeriodic(LOG_WARNING, periodMs, format, ##__VA_ARGS__)
 #define LogErrorPeriodic(periodMs, format, ...) LogPeriodic(LOG_ERROR, periodMs, format, ##__VA_ARGS__)

@@ -15,6 +15,7 @@ typedef struct {
     atomic_u8 flags;
     atomic_u16 seekPosition;
     atomic_u16 numFramesToWrite;
+    u16 framesThisCycle;
     ThreadPool* threadPool;
 } AudioRenderer;
 

@@ -32,15 +32,17 @@ enum  {
     NUM_ENGINE_FLAGS,
 };
 
-typedef void (*JamProcessFunc)(f64 sampleRate, u16 numFrames, f32* buffer, void* data); 
-typedef void (*JamDestroyFunc)(void* data); 
+typedef void (*ProcessFunc)(f64 sampleRate, u16 numFrames, f32* buffer, void* data); 
+typedef void (*OnNewAudioCycleFunc)(void* data); 
+typedef void (*DestroyFunc)(void* data); 
 
 typedef struct {
     u16 inputRoutingMask, outputRoutingMask;
     void* procData;
-    JamProcessFunc Process;
-    JamDestroyFunc Destroy;
-} JamAudioProcessor;
+    ProcessFunc Process;
+    OnNewAudioCycleFunc OnNewAudioCycle;
+    DestroyFunc Destroy;
+} AudioProcessor;
 
 typedef struct {
     // Playback state
@@ -61,7 +63,7 @@ typedef struct {
     // Channels
     u64 processorMask;
     u64 sourceMask;
-    JamAudioProcessor processors[MAX_PROCESSORS];
+    AudioProcessor processors[MAX_PROCESSORS];
 
     // Thread Pool
     ThreadPool threadPool;
@@ -77,7 +79,7 @@ void CoreEngine_Deinit(CoreEngineContext* ctx);
 void CoreEngine_Start(CoreEngineContext* ctx);
 void CoreEngine_Stop(CoreEngineContext* ctx);
 void CoreEngine_AddSource(CoreEngineContext* ctx, u16 id);
-u16 CoreEngine_CreateProcessor(CoreEngineContext* ctx, JamProcessFunc procFunc, JamDestroyFunc destFunc, void* data);
+u16 CoreEngine_CreateProcessor(CoreEngineContext* ctx, ProcessFunc procFunc, DestroyFunc destroyFunc, OnNewAudioCycleFunc onNewAudioCycleFunc, void* data);
 void CoreEngine_RemoveProcessor(CoreEngineContext* ctx, u16 id);
 void CoreEngine_Route(CoreEngineContext* ctx, u16 inputId, u16 outputId, bool shouldRoute);
 void CoreEngine_SubmitTask(CoreEngineContext* ctx, TaskInfo task);

@@ -12,6 +12,7 @@ typedef struct {
     pthread_mutex_t mutex;
     pthread_cond_t cond;
     _Atomic(bool) receivedData;
+    _Atomic(bool) newAudioCycleCalled;
     u16 capacity;
     f64 sampleRate;
     u16 numFrames;

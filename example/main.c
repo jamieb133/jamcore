@@ -44,30 +44,31 @@ int main()
 
     // Create a channel fader for each audio source
     Fader sqFader, sinFader, wavFader, recordFader;
-    u16 faderId1, faderId2, faderId3, faderId4;
-    faderId1 = Fader_Create(&sqFader, -1.0f, 0.0f, &context);
-    faderId2 = Fader_Create(&sinFader, 1.0f, 0.0f, &context);
-    faderId3 = Fader_Create(&wavFader, 0.0f, 0.0f, &context);
-    faderId4 = Fader_Create(&recordFader, 0.0f, 0.5f, &context);
+    u16 channelSquareWave, channelSineWave, channelWavPlayer, channelRenderer;
+    channelSquareWave = Fader_Create(&sqFader, -1.0f, 0.0f, &context);
+    channelSineWave = Fader_Create(&sinFader, 1.0f, 0.0f, &context);
+    channelWavPlayer = Fader_Create(&wavFader, 0.0f, 0.0f, &context);
+    channelRenderer = Fader_Create(&recordFader, 0.0f, 1.0f, &context);
 
     // Route the sin signal to mixer control
-    CoreEngine_Route(&context, sinOscId, faderId2, true);
+    CoreEngine_Route(&context, sinOscId, channelSineWave, true);
     // Route the saw signal to mixer control
-    CoreEngine_Route(&context, sqOscId, faderId1, true);
+    CoreEngine_Route(&context, sqOscId, channelSquareWave, true);
     // Apply lowpass filter to wav audio
     CoreEngine_Route(&context, wavPlayerId, filterId, true);
     // Route the filtered wav file audio to mixer control
-    CoreEngine_Route(&context, filterId, faderId3, true);
+    CoreEngine_Route(&context, filterId, channelWavPlayer, true);
 
     // Record input file without filtering
-    CoreEngine_Route(&context, wavPlayerId, faderId4, true);
+    CoreEngine_Route(&context, sinOscId, channelRenderer, true);
+    CoreEngine_Route(&context, sqOscId, channelRenderer, true);
+    CoreEngine_Route(&context, wavPlayerId, channelRenderer, true);
 
     // Connect Fader 4 output to Renderer
-    CoreEngine_Route(&context, faderId4, rendererId, true);
+    CoreEngine_Route(&context, channelRenderer, rendererId, true);
 
-    // Start recording, don't output audio from the renderer
+    // Start recording
     AudioRenderer_StartRecord(&renderer);
-    renderer.flags |= AUDIO_RENDERER_MUTE;
 
     // Start audio
     CoreEngine_Start(&context);

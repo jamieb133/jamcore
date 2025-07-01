@@ -13,5 +13,5 @@ static void ProcessPassthrough(f64 sampleRate, u16 numFrames, f32* buffer, void*
 u16 Passthrough_Create(CoreEngineContext* ctx)
 {
     LogInfo("Creating Passthrough Processor");
-    return CoreEngine_CreateProcessor(ctx, ProcessPassthrough, NULL, NULL);
+    return CoreEngine_CreateProcessor(ctx, ProcessPassthrough, NULL, NULL, NULL);
 }

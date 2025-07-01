@@ -8,6 +8,8 @@ static void ProcessCallback(f64 sampleRate, u16 numFrames, f32* buffer, void* da
 {
     (void)sampleRate;
 
+    LogTrace("Process fader");
+
     Fader* fader = (Fader*)data;
     Assert(fader, "Fader is null");
 
@@ -30,6 +32,6 @@ u16 Fader_Create(Fader* fader, f32 defaultPan, f32 defaultVol, CoreEngineContext
     Assert(fader, "Fader is null");
     fader->pan = defaultPan;
     fader->vol = defaultVol;
-    return CoreEngine_CreateProcessor(ctx, ProcessCallback, NULL, (void*)fader) ;
+    return CoreEngine_CreateProcessor(ctx, ProcessCallback, NULL, NULL, (void*)fader) ;
 }
 

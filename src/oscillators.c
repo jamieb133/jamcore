@@ -15,6 +15,7 @@ static const char* waveformStrings_[WAVEFORM_COUNT] = {
 
 static void ProcessCallback(f64 sampleRate, u16 numFrames, f32* buffer, void* data)
 {
+    LogTrace("Process osc");
     Oscillator* osc = (Oscillator*)data;
     Assert(osc, "Oscillator is null");
 
@@ -66,6 +67,6 @@ u16 Oscillator_Create(Oscillator* osc,
     osc->type = type;
     osc->amplitude = amplitude;
 
-    return CoreEngine_CreateProcessor(ctx, ProcessCallback, NULL, (void*)osc);
+    return CoreEngine_CreateProcessor(ctx, ProcessCallback, NULL, NULL, (void*)osc);
 }
 

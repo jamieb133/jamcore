@@ -10,6 +10,7 @@
 
 static const char* levels_[LOG_NUM_LEVELS] = {
     "TEST",
+    "TRACE",
     "INFO",
     "WARN",
     "ERROR",
@@ -17,6 +18,7 @@ static const char* levels_[LOG_NUM_LEVELS] = {
 
 static const char* colors_[LOG_NUM_LEVELS] = {
     ANSI_COLOR_BLUE, // TEST
+    ANSI_COLOR_CYAN, // TRACE
     ANSI_COLOR_RESET, // INFO
     ANSI_COLOR_YELLOW, // WARN
     ANSI_COLOR_RED, // ERROR
