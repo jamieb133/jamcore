@@ -11,10 +11,6 @@
 #define MAX_TESTS_PER_SUITE 128
 #define MAX_SUITES 64
 
-// TODO: figure out how to group test suites into those that can run in parallel
-// for now just use one thread.
-#define NUM_THREADS 1 
-
 typedef struct TestInfo {
     const char* name;
     u64 numChecksPassed;
@@ -42,8 +38,8 @@ void (*Teardown)(void);
 
 extern TestSuite testSuites_[MAX_SUITES];
 extern u16 numSuites_;
-extern __thread jmp_buf testFailedJumpBuffer_;
-extern __thread jmp_buf assertJumpBuffer_;
+extern jmp_buf testFailedJumpBuffer_;
+extern jmp_buf assertJumpBuffer_;
 
 #define STRINGIFY(x) #x
 #define TO_STRING(x) STRINGIFY(x)

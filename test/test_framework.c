@@ -29,13 +29,11 @@ typedef struct {
 TestSuite testSuites_[MAX_SUITES];
 u16 numSuites_ = 0;
 u16 currentTestNum_ = 0;
-pthread_t threadPool_[NUM_THREADS];
-pthread_mutex_t testRunnerMutex_;
 
 // Thread local globals to allow accessing current test and fail a test from Assert
-__thread TestInfo* currentTest_;
-__thread jmp_buf testFailedJumpBuffer_;
-__thread jmp_buf assertJumpBuffer_;
+TestInfo* currentTest_;
+jmp_buf testFailedJumpBuffer_;
+jmp_buf assertJumpBuffer_;
 
 static void StringInit(String* string, const char* cstring)
 {
@@ -127,6 +125,7 @@ static void WriteJUnitReport(void)
 
 static void AssertHandler(const char* message, const char* file, i32 line)
 {
+    LogTest("Assert");
     if (currentTest_->expectAssert) {
         longjmp(assertJumpBuffer_, 1);
     }
@@ -151,20 +150,15 @@ void TestCheck(bool condition, const char* msg, const char* file, i32 line, Test
     longjmp(testFailedJumpBuffer_, 1);
 }
 
-void* TestRunner(void* args)
+i32 RunAllTests(LogLevel logLevel)
 {
-    for (;;) {
-        pthread_mutex_lock(&testRunnerMutex_);
-
-        if (currentTestNum_ >= numSuites_) {
-            pthread_mutex_unlock(&testRunnerMutex_);
-            break;
-        }
-
+    RegisterAssertHandler(AssertHandler);
+    SetLogLevel(logLevel);
+    
+    while (currentTestNum_ < numSuites_) {
         TestSuite* suite = &testSuites_[currentTestNum_];
         currentTestNum_++;
         LogTest("Starting Test Suite: %s", suite->name);
-        pthread_mutex_unlock(&testRunnerMutex_);
 
         u64 suiteStartTime = GetTimeMs();
         suite->Setup(suite);
@@ -192,29 +186,18 @@ void* TestRunner(void* args)
         }
         suite->duration = GetTimeMs() - suiteStartTime;
     }
-
-    return NULL;
-}
-
-i32 RunAllTests(LogLevel logLevel)
-{
-    RegisterAssertHandler(AssertHandler);
-    SetLogLevel(logLevel);
-
-    pthread_mutex_init(&testRunnerMutex_, NULL);
-
-    for (u8 i = 0; i < NUM_THREADS; i++) {
-        pthread_t threadId;
-        pthread_create(&threadId, NULL, TestRunner, NULL);
-        threadPool_[i] = threadId;
-    }
-
-    for (u8 i = 0; i < NUM_THREADS; i++) {
-        pthread_join(threadPool_[i], NULL);
-    }
     
+    String suiteNames;
+    StringInit(&suiteNames, "");
+    for (u16 i = 0; i < numSuites_; i++) {
+        StringConcat(&suiteNames, " -> ");
+        StringConcat(&suiteNames, testSuites_[i].name);
+        StringConcat(&suiteNames, "\n");
+    }
+
     printf("%s========================================================\n", ANSI_COLOR_BLUE);
     printf("-- Test Summary --\n");
+    printf("%s", suiteNames.data);
     printf("========================================================%s\n", ANSI_COLOR_RESET);
     
     u16 totalPassed = 0, totalFailed = 0;
@@ -253,7 +236,6 @@ i32 RunAllTests(LogLevel logLevel)
     }
 
     WriteJUnitReport();
-    pthread_mutex_destroy(&testRunnerMutex_);
 
     return totalFailed > 0 ? 1 : 0;
 }
